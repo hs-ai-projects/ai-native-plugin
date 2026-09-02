@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "attribute.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "state", "attribute.py")
 
 
 def run(tmp_path, failures):

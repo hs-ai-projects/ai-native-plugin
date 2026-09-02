@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "repair-counter.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "state", "repair-counter.py")
 
 
 def run(state_base, task_id, repo, result):

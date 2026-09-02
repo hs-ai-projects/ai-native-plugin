@@ -5,5 +5,5 @@
 set -u
 repo_dir="${1:?usage: full-verify.sh <repo_dir>}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$("$SCRIPT_DIR/ensure-python-deps.sh")"
+PYTHON="$("$SCRIPT_DIR/../bootstrap/ensure-python-deps.sh")"
 exec "$PYTHON" "$SCRIPT_DIR/verify_runner.py" "$repo_dir"

@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "contract_checker.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "verify", "contract_checker.py")
 
 
 def run(*args):

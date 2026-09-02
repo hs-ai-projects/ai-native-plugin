@@ -15,7 +15,7 @@ try:
 except ImportError:
     yaml = None
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "check-bands.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "telemetry", "check-bands.py")
 
 BANDS_CONTENT = {
     "metric": "repair_round_count",

@@ -15,7 +15,7 @@ if [ -n "${3:-}" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$("$SCRIPT_DIR/ensure-python-deps.sh")"
+PYTHON="$("$SCRIPT_DIR/../bootstrap/ensure-python-deps.sh")"
 
 branch=$(git -C "$sandbox_path" rev-parse --abbrev-ref HEAD)
 spec="${SPEC_FILE:-$PWD/.ai-devflow/$task_id/SPEC.md}"
@@ -54,7 +54,7 @@ BODY
 contract_file="$PWD/.ai-devflow/$task_id/contract.json"
 if [ -f "$contract_file" ]; then
   if [ "$dry_run" != "1" ] && [ "${CREATE_MR_FEISHU_CONVERGE:-0}" = "1" ]; then
-    "$PYTHON" "$SCRIPT_DIR/partner.py" gather "$task_id" --dir "$PWD" >/dev/null 2>&1 || true
+    "$PYTHON" "$SCRIPT_DIR/../collab/partner.py" gather "$task_id" --dir "$PWD" >/dev/null 2>&1 || true
   fi
   gate_out=$("$PYTHON" - "$contract_file" "$PWD/.ai-devflow/$task_id/contract-state.json" <<'PY' 2>/dev/null || echo "BAD"
 import json, os, sys

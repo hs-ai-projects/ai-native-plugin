@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 
-SCRIPT = os.path.join(os.path.dirname(__file__), "..", "contract-align.py")
+SCRIPT = os.path.join(os.path.dirname(__file__), "..", "collab", "contract-align.py")
 
 
 def run(*args):

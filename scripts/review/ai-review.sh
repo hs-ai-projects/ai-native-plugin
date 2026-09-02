@@ -12,7 +12,7 @@ task_id="${2:?task_id required}"
 [ -d "$sandbox_path/.git" ] || [ -f "$sandbox_path/.git" ] || { echo "ERROR: not a git repo: $sandbox_path" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$("$SCRIPT_DIR/ensure-python-deps.sh")"
+PYTHON="$("$SCRIPT_DIR/../bootstrap/ensure-python-deps.sh")"
 
 spec="${SPEC_FILE:-$PWD/.ai-devflow/$task_id/SPEC.md}"
 review_dir="${REVIEW_DIR:-$PWD/.ai-devflow/$task_id}"
@@ -20,7 +20,7 @@ mkdir -p "$review_dir"
 
 # 动态检查清单：解析 policies/REVIEW.md 的 "- [ ]" 行（Critical/Important/Nit 各级）；
 # 文件缺失或没有清单行时回退默认清单。
-review_policy="${REVIEW_POLICY:-$SCRIPT_DIR/../policies/REVIEW.md}"
+review_policy="${REVIEW_POLICY:-$SCRIPT_DIR/../../policies/REVIEW.md}"
 checklist_md=""
 if [ -f "$review_policy" ]; then
   checklist_md=$(grep -E '^- \[ \]' "$review_policy" || true)

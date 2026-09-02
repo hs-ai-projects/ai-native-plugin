@@ -4,8 +4,8 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-RUNNER="$ROOT/scripts/verify_runner.py"
-PYTHON="$("$ROOT/scripts/ensure-python-deps.sh")"
+RUNNER="$ROOT/scripts/verify/verify_runner.py"
+PYTHON="$("$ROOT/scripts/bootstrap/ensure-python-deps.sh")"
 [ -n "$PYTHON" ] || { echo "SKIP: ensure-python-deps failed"; exit 0; }
 
 # Windows：git-bash 的 /tmp 与 /c/... 路径原生 Windows python 读不到，统一转 C:/... 形式；

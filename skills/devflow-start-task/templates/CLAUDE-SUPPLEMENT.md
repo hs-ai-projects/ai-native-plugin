@@ -6,8 +6,8 @@
 ## 验证工作（对应当前仓库的 harness.yaml，不要凭感觉猜测试命令）
 
 - 仓库根目录 `harness.yaml` 定义了 unit/api/e2e/contract 各层实际命令，命令是 per-repo 的。
-- 快速验证：`${CLAUDE_PLUGIN_ROOT}/scripts/fast-verify.sh <repo_dir>`（只跑 gates.fast）。
-- 完整验证：`${CLAUDE_PLUGIN_ROOT}/scripts/full-verify.sh <repo_dir>`（跑 gates.full 全部层）。
+- 快速验证：`${CLAUDE_PLUGIN_ROOT}/scripts/verify/fast-verify.sh <repo_dir>`（只跑 gates.fast）。
+- 完整验证：`${CLAUDE_PLUGIN_ROOT}/scripts/verify/full-verify.sh <repo_dir>`（跑 gates.full 全部层）。
 - 结果写入 `<repo_dir>/.ai-devflow/verification.json`：PASS/FAIL；ERROR 表示环境/超时（归 infra）。
 - 报告完成前必须真跑过并确认 PASS。
 

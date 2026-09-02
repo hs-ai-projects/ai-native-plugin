@@ -2,7 +2,7 @@
 # create-mr.sh 契约收敛闸门（spec 3.2.4 / 7.15）：
 # 带 contract.json 的任务，本地状态未收敛到 aligned+ack==meta.version 时 dry-run 也被拦（exit 2）。
 set -u
-CREATE_MR="$(cd "$(dirname "$0")/../.." && pwd)/scripts/create-mr.sh"
+CREATE_MR="$(cd "$(dirname "$0")/../.." && pwd)/scripts/lifecycle/create-mr.sh"
 root=$(mktemp -d)
 command -v cygpath >/dev/null 2>&1 && root=$(cygpath -m "$root")
 trap 'rm -rf "$root"' EXIT

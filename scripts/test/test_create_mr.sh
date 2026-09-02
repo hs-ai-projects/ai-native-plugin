@@ -1,7 +1,7 @@
 #!/bin/bash
 # create-mr.sh dry-run 单测：不真 push/mr，用 SPEC_FILE/REVIEW_FILE 覆盖指向临时 fixture，验证描述组装。
 set -u
-CREATE_MR="$(cd "$(dirname "$0")/../.." && pwd)/scripts/create-mr.sh"
+CREATE_MR="$(cd "$(dirname "$0")/../.." && pwd)/scripts/lifecycle/create-mr.sh"
 root=$(mktemp -d)
 # Windows 宿主：git-bash 的 /tmp 路径 Windows Python 读不到，转成 C:/... 形式；
 # Linux 宿主无 cygpath，保持原生路径。

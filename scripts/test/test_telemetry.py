@@ -5,9 +5,10 @@ import subprocess
 import sys
 
 SCRIPTS = os.path.join(os.path.dirname(__file__), "..")
-EMIT = os.path.join(SCRIPTS, "emit-event.py")
-LOAD = os.path.join(SCRIPTS, "load-events.py")
-ANALYTICS = os.path.join(SCRIPTS, "analytics.py")
+TELEMETRY = os.path.join(SCRIPTS, "telemetry")
+EMIT = os.path.join(TELEMETRY, "emit-event.py")
+LOAD = os.path.join(TELEMETRY, "load-events.py")
+ANALYTICS = os.path.join(TELEMETRY, "analytics.py")
 
 
 def py(*args, **kw):

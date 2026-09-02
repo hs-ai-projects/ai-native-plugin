@@ -19,7 +19,7 @@ claude plugin install ai-native-plugin@ai-native-plugin-marketplace
 | Python3 | 业务脚本运行 | `ensure-python-deps.sh` 会尝试建 venv |
 | `jq` | hook 解析 PreToolUse stdin JSON | protect-paths/approval-gate 两个 hook 静默失效（取不到路径→不拦截） |
 
-Python 包（pyyaml/pytest/httpx）由 `scripts/ensure-python-deps.sh` 首次运行时自动装入
+Python 包（pyyaml/pytest/httpx）由 `scripts/bootstrap/ensure-python-deps.sh` 首次运行时自动装入
 `${CLAUDE_PLUGIN_DATA}/venv`（卸载插件自动清理），不污染目标仓库环境。
 
 ## 使用

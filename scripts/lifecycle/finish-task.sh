@@ -4,8 +4,8 @@
 # 任务终态收尾：merge MR + 清理 sandbox + 自动记录真实 token 用量/会话详情。
 # 埋点是这个脚本自身固定执行的动作。GitLab 操作统一走 glab CLI（spec 4.3）。
 # 去掉评审回路（spec 第 2 节）：MR 评论由用户人工处理，本脚本不检查 glab mr note list。
-# Ported from ai-native/scripts/finish-task.sh；HARNESS_SCRIPTS 默认改为脚本自身目录，
-# python 一律走插件 venv。
+# Ported from ai-native/scripts/finish-task.sh；HARNESS_SCRIPTS 默认指向 telemetry/
+# 子目录（emit-event.py / session-usage.py 所在），python 一律走插件 venv。
 set -euo pipefail
 
 task_id="${1:?usage: finish-task.sh <task_id> <repo> <sandbox_path> <mr_url>}"
@@ -14,8 +14,8 @@ sandbox_path="${3:?sandbox_path required}"
 mr_url="${4:?mr_url required}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$("$SCRIPT_DIR/ensure-python-deps.sh")"
-HARNESS_SCRIPTS="${HARNESS_SCRIPTS:-$SCRIPT_DIR}"
+PYTHON="$("$SCRIPT_DIR/../bootstrap/ensure-python-deps.sh")"
+HARNESS_SCRIPTS="${HARNESS_SCRIPTS:-$SCRIPT_DIR/../telemetry}"
 
 glab mr merge "$mr_url" --yes --remove-source-branch \
   || { echo "ERROR: glab mr merge failed" >&2; exit 1; }

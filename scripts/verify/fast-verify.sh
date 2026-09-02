@@ -6,7 +6,7 @@ set -u
 
 repo_dir="${1:?usage: fast-verify.sh <repo_dir>}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PYTHON="$("$SCRIPT_DIR/ensure-python-deps.sh")"
+PYTHON="$("$SCRIPT_DIR/../bootstrap/ensure-python-deps.sh")"
 harness="$repo_dir/harness.yaml"
 
 [ -f "$harness" ] || { echo "[fast-verify] FAIL: no harness.yaml in $repo_dir"; exit 1; }

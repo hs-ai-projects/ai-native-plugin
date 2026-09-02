@@ -1,7 +1,7 @@
 #!/bin/bash
 # ai-review.sh 单测：临时 git repo 验证 review.md 组装（含 diff/AC/verification）。
 set -u
-AI_REVIEW="$(cd "$(dirname "$0")/../.." && pwd)/scripts/ai-review.sh"
+AI_REVIEW="$(cd "$(dirname "$0")/../.." && pwd)/scripts/review/ai-review.sh"
 root=$(mktemp -d)
 # Windows：git-bash 的 /tmp 路径原生 Windows python 读不到，转 C:/... 形式；Linux 无 cygpath 保持原生。
 command -v cygpath >/dev/null 2>&1 && root=$(cygpath -m "$root")
