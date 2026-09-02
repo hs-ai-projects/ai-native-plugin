@@ -100,6 +100,23 @@ def path_referenced(path, biz_dirs):
     return False
 
 
+def declared_fields(ep):
+    """端点声明的可选字段名（字段级漂移引用检查用）。
+
+    约定（spec 3.2/7.15）：端点可直接带 `fields: [..]`，或 `response.fields: [..]`。
+    不声明 → 返回 []，字段级检查关闭，只做现有 path 引用检查。字段检查与 path
+    检查同一启发式（business_code 文本子串），是保守的漂移哨兵而非精确类型核对。
+    """
+    fields = ep.get("fields")
+    if fields is None:
+        resp = ep.get("response")
+        if isinstance(resp, dict):
+            fields = resp.get("fields")
+    if isinstance(fields, list):
+        return [f for f in fields if isinstance(f, str) and f]
+    return []
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("usage: contract_checker.py <contract_file> [repo_dir]\n")
@@ -120,12 +137,21 @@ def main():
         print(f"contract_checker: OK ({len(endpoints)} endpoints; business_code empty/absent, usage check skipped)")
         sys.exit(0)
 
-    missing = [ep["path"] for ep in endpoints if not path_referenced(ep["path"], biz_dirs)]
-    if missing:
+    missing_paths = [ep["path"] for ep in endpoints if not path_referenced(ep["path"], biz_dirs)]
+    missing_fields = []
+    for ep in endpoints:
+        for f in declared_fields(ep):
+            if not path_referenced(f, biz_dirs):
+                missing_fields.append(f"{ep['path']}#{f}")
+    if missing_paths or missing_fields:
         side = stack_type if stack_type in ("frontend", "backend") else "unknown"
+        lines = []
+        if missing_paths:
+            lines.append(f"does not reference {len(missing_paths)} contract endpoint(s): {missing_paths}")
+        if missing_fields:
+            lines.append(f"declared field(s) not referenced: {missing_fields}")
         sys.stderr.write(
-            f"contract_checker: {side} business_code does not reference {len(missing)} "
-            f"contract endpoint(s): {missing}\n"
+            "contract_checker: " + f"{side} business_code " + "; ".join(lines) + "\n"
         )
         sys.exit(1)
 

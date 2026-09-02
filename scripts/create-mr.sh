@@ -47,6 +47,44 @@ $(head -8 "$review" 2>/dev/null)
 BODY
 )
 
+# ── 3.2 契约收敛闸门（spec 3.2.4 / 7.15，挂在建 MR 这一侧）────────────
+# 带 contract.json 的任务必须"对齐已确认且本地状态收敛"才能建 MR；未确认 exit 2。
+# 真实运行设 CREATE_MR_FEISHU_CONVERGE=1 时先调 partner.py gather 把群里最新确认
+# 收敛回本地（dry-run 不做飞书查询，仅本地校验）。
+contract_file="$PWD/.ai-devflow/$task_id/contract.json"
+if [ -f "$contract_file" ]; then
+  if [ "$dry_run" != "1" ] && [ "${CREATE_MR_FEISHU_CONVERGE:-0}" = "1" ]; then
+    "$PYTHON" "$SCRIPT_DIR/partner.py" gather "$task_id" --dir "$PWD" >/dev/null 2>&1 || true
+  fi
+  gate_out=$("$PYTHON" - "$contract_file" "$PWD/.ai-devflow/$task_id/contract-state.json" <<'PY' 2>/dev/null || echo "BAD"
+import json, os, sys
+c = json.load(open(sys.argv[1]))
+meta = (c.get("meta") or {}).get("version") or ""
+sp = sys.argv[2]
+if not os.path.isfile(sp):
+    print("MISSING_STATE")
+    raise SystemExit(0)
+s = json.load(open(sp))
+status = s.get("status") or ""
+ack = s.get("ack_version") or ""
+if status == "aligned" and ack and ack == meta:
+    print("OK")
+else:
+    print(f"BAD status={status} ack={ack} meta={meta}")
+PY
+)
+  case "$gate_out" in
+    OK) ;;
+    MISSING_STATE)
+      echo "ERROR: contract.json 存在但没有 contract-state.json —— 该任务未完成 3.2 阶段0 对齐/确认" >&2
+      exit 2 ;;
+    *)
+      echo "ERROR: 契约未确认收敛（spec 3.2.4）：$gate_out" >&2
+      echo "  需先在群里完成 [cc-task $task_id][contract ...] 确认，或用 partner.py gather 收敛后再建 MR。" >&2
+      exit 2 ;;
+  esac
+fi
+
 if [ "$dry_run" = "1" ]; then
   echo "=== DRY-RUN: 将执行 ==="
   echo "git -C $sandbox_path push -u origin $branch"

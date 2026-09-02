@@ -36,6 +36,10 @@
 | 评审回路 | **去掉"@claude 自动回修回路"**（2026-09-02）——MR 建开后不再自动检查 `glab mr note list` 未解决评论并分类回修，MR 评论由用户自己人工处理，见 6/7.13 |
 | 本 spec 存放位置 | `ai-native-plugin` 仓库（这是新项目真实归属地，不放在 `ai-native` 里） |
 | `.env`/secrets deny 机制 | **暂缓，留档**（见第 9 节），插件形态下这条不能再靠 Dockerfile 焊死，需要额外方案，本次不展开 |
+| 跨仓库确认闭环（2026-09-02 定稿） | 两实例**文件系统隔离**，协作状态真值只落飞书群消息；本地 `partner.yaml`/`contract-state.json` 仅做断点缓存，不新增共享存储/同机假设，见 3.2 |
+| `partner.yaml` 落点（2026-09-02 定稿） | 目标仓库 `.ai-devflow/partner.yaml`（每实例各写各的"我是谁/对面是谁/在哪个群"，不做运行时互发现），不入插件仓库与 git 远端，见 3.2.2 |
+| 协作子协议形态（2026-09-02 定稿） | **叠加层而非并行流程**：只在一个任务命中跨仓库契约影响面时介入，插在 9 步步骤 1 后（阶段 0 对齐）与步骤 6/8（漂移检测、建 MR 收敛闸门）；纯本仓库任务与现状一致，见 3.2.0/3.2.4 |
+| 协作埋点（2026-09-02 定稿） | **不新增事件类型**，对齐/漂移动作复用 `task_updated` + `data.phase`，遵守 7.11 的 enum 同步约束，见 7.15 |
 
 ---
 
@@ -59,19 +63,76 @@
 
 ### 3.2 跨仓库协作怎么做（基于 cc-connect 真实机制，2026-09-02 订正）
 
-> **订正说明**：初版这里写的"靠飞书任务关联"是没有技术依据的编造说法。核实 `entrypoint.sh:216-271` 和 `Claude_Agent_Teams_AI_DevFlow_Final_Design.md` §4.2 后确认：cc-connect 现状是**一个容器绑一个飞书 bot 身份**（`config.toml` 的 `[[projects.platforms]]` type=feishu），`group_only=true`/`thread_isolation=true`。插件化后两个仓库各自的容器/实例各接一个 cc-connect（各自独立的飞书 bot），本节描述的是"两个 bot 能在同一个飞书群里互相 @ 协作"这个新模式的完整机制——这是之前系统里从未出现过的协作方式（原来只有一个 bot，Team Lead 在容器内部用 Task 工具调度，不存在"bot 互相 @"）。
+> **订正说明**：初版这里写的"靠飞书任务关联"是没有技术依据的编造说法。核实 `entrypoint.sh:216-271` 和 `Claude_Agent_Teams_AI_DevFlow_Final_Design.md` §4.2 后确认：cc-connect 现状是**一个容器绑一个飞书 bot 身份**（`config.toml` 的 `[[projects.platforms]]` type=feishu），`group_only=true`/`thread_isolation=true`/`resolve_mentions=true`。插件化后两个仓库各自的容器/实例各接一个 cc-connect（各自独立的飞书 bot），本节描述的是"两个 bot 能在同一个飞书群里互相 @ 协作"这个新模式的完整机制——这是之前系统里从未出现过的协作方式（原来只有一个 bot，Team Lead 在容器内部用 Task 工具调度，不存在"bot 互相 @"）。**"bot 互相 @ 并在群内收发确认"的能力已由用户在实际部署中验证可用，本节不再讨论该能力是否存在，只把它当作既定事实来规范落地结构（2026-09-02 定稿）。**
 
-**触发方式**：没有统一调度入口。用户在飞书群里凭自己判断直接 `@` 该处理这个需求的 bot（觉得是前端问题就 @frontend-bot，是后端问题就 @backend-bot）。哪个 bot 先被 @，就由它先接手判断范围。
+> **落地前提（2026-09-02 定稿确认）**：两个实例**文件系统隔离**——各自容器/机器互不可见彼此的 `.ai-devflow/`。它们之间唯一的可观测共享通道是**飞书群消息**。因此跨仓库协作的状态真值只能落在群消息里；实例本地的配置/状态文件只做断点缓存，**不是同步源**。协作机制不新增共享存储、不假设同机。
 
-**对方定位**：每个仓库装插件时，在插件配置里静态声明"我的搭档 bot 是谁/在哪个飞书群"（比如 `ads-web` 仓库的插件配置写 `partner_bot: "@ads-backend-bot"`，`ads` 仓库反过来写 `partner_bot: "@ads-web-bot"`）。这是显式配置，不是运行时推断——因为两边的 bot 都是各自平台创建的，没有一个共享注册表能互相发现，配置项写在哪由第4节的插件配置文件承载（新增 `config/partner.yaml` 或类似结构，具体落点见实施计划）。
+#### 3.2.0 协作子协议总览
 
-**协作范围**：@来@去这一段**只做"对齐需求边界和接口契约"**，不是两个 bot 在群里合作改代码——比如后端 bot 在群里说"新增接口 `GET /claims/:id/status`，返回 `{status, next_step, eta}`"，前端 bot 确认能接受这个结构。
+跨仓库协作是叠加在单仓库 9 步流程之外的**横向子协议**，只在一个任务"需要跨仓库改动或涉及接口契约"时介入。介入点不是并行跑 9 步，而是插在 9 步之前（阶段 0：对齐）与两个闸门（verify 漂移检测、建 MR 前确认收敛）上。由三件东西承载：
 
-**停止条件**：任一方在群里明确说"契约/接口已对齐"，这轮群内协作即结束。确认动作触发发起确认那一方写一份 `.ai-devflow/<task-id>/contract.json`（沿用现有 `contract_cmd`/`contract_checker.py` 机制，不新增校验逻辑）。随后两个 bot 各自退回自己仓库，从群聊互动中"消失"，各自独立跑第6节的完整9步流程。
+1. **配置**：目标仓库 `.ai-devflow/partner.yaml`（每实例声明"我是谁 / 对面是谁 / 在哪个群"）。
+2. **机器可读消息前缀协议**：所有 bot↔bot 契约协作消息带 `[cc-task <task-id>][contract <major>.<minor>]` 前缀，让被唤起的新会话能认出"这是对 task X 契约 vN 的什么动作"。
+3. **产物**：`.ai-devflow/<task-id>/contract.json`（对齐快照）+ `.ai-devflow/<task-id>/contract-state.json`（本地断点状态机）。
 
-**契约漂移兜底**（关键，没有这条会有真实风险）：后端在自己仓库独立开发期间，如果实现跟对齐时的 `contract.json` 快照不一致（比如返回字段临时改了），`scripts/contract_checker.py` 在步骤6"汇总验证"时对比当前实现与已对齐快照——**发现不一致就自动在原飞书群重新 `@` 对方确认，确认前不允许进入步骤8建 MR**。这样"对齐一次就独立开发"不会变成"契约漂移了对方也不知道"的隐患，形成一个闭环而不是单向脱钩。
+#### 3.2.1 触发方式与范围判定（阶段 0 入口）
 
-**验收**：模拟一次前后端在群里对齐接口→确认→独立开发→后端改动破坏已对齐字段的场景，`contract_checker.py` 在 verify 阶段应能检测出快照差异并阻止建 MR，同时触发一次群内重新确认的通知。
+没有统一调度入口。用户在飞书群里凭自己判断直接 `@` 该处理这个需求的 bot（觉得是前端问题就 @frontend-bot，是后端问题就 @backend-bot）。哪个 bot 先被 @，就由它先接手判断范围：
+
+- 读任务/需求，结合 `harness.yaml` 的 `paths` 与需求语义做**影响面判定**，分三类：
+  - **纯本仓库**：不进协作子协议，直接走第 6 节 9 步（现有流程不变）。
+  - **涉及跨仓库 + 接口契约**：进入阶段 0 对齐子流程（3.2.3），再各自退回 9 步。
+  - **纯对方仓库**：不接手，飞书回一句"该由 @partner 处理"，不产生 sandbox/MR。
+- 判定结果写进 `intent.md` 的 `## Decision`（沿用 7.7），Accept 且带契约影响面时追加 `## Contract scope` 小节列出候选对齐端点，作为阶段 0 的输入。
+
+#### 3.2.2 对方定位（配置，不是运行时推断）
+
+每个仓库装插件时，在**目标仓库自己的** `.ai-devflow/partner.yaml` 静态声明（文件系统隔离下无共享注册表可互相发现，各写各的，不做双向往返探测）：
+
+```yaml
+me:
+  bot: "@fe-bot"                 # 本实例在群里的 bot 名（自我识别/落款）
+partner:
+  bot: "@be-bot"                 # 跨仓库协作对象（对方 bot）
+  group_id: "oc_xxxx"            # 双方共同所在的飞书群 chat_id
+  contract_dir: ".ai-devflow"    # 对方仓库侧契约产物目录约定（通常同构，可覆盖）
+collaboration:
+  enabled: true
+  auto_align: true               # 命中契约影响面时自动发起对齐；false = 只提示人工在群里发起
+```
+
+> 该文件是目标仓库运行时配置（含仓库自己的群/搭档，与插件本体解耦），不入插件仓库、不进 git 远端（随 `.ai-devflow/` 一起被 `.git/info/exclude` 忽略）。读取/校验脚本见 7.15。
+
+#### 3.2.3 对齐与确认（协作范围 + 停止条件）
+
+**协作范围**：@来@去这一段**只做"对齐需求边界和接口契约"**，不是两个 bot 在群里合作改代码——比如后端 bot 发对齐请求"新增接口 `GET /claims/:id/status`，返回 `{status, next_step, eta}`"，前端 bot 确认能接受这个结构。
+
+**消息协议（机器可读前缀，两处新会话靠它识别上下文）**：
+
+- 对齐请求：`[cc-task <task-id>][contract 1.0] 发起契约对齐，端点如下：...`（@ 对方）
+- 对齐确认：`[cc-task <task-id>][contract 1.0] 确认` / `拒绝：<差异>`
+- 漂移重确认：`[cc-task <task-id>][contract 1.1] 契约漂移：<路径/字段 A→B>，请重新确认`
+
+**发起方流程（阶段 0，发起方=先接手的实例）**：
+
+1. 依据 `intent.md` 的 `## Contract scope`，把候选端点组织成一条对齐请求，@ 对方发到 `partner.yaml` 声明的群里；本地 `contract-state.json` 置 `status: pending`，记录发出的 `message_id`。
+2. 对方 bot 被唤起 → 新会话里由 7.15 的识别规则判定为"契约协作消息" → 核对端点/字段对其自身 stack 是否可接受 → 回复确认或拒绝（拒绝附差异，回去改对齐请求再发）。
+3. 发起方看到（或被 @ 唤起后收敛到）对方确认 → 把对齐结果写成 `.ai-devflow/<task-id>/contract.json`（结构沿用现有 checker：`{api:[{path,method,...}], meta:{aligned_with, version, aligned_at}}`；端点可带 response 等附加字段，结构校验只要求 `path`+`method`，多余字段兼容）；`contract-state.json` 置 `status: aligned, ack_version: <对齐的 version>`。
+4. 双方各自退回自己仓库，从群聊互动中"消失"，各自独立跑第 6 节 9 步。**对齐确认动作触发写 contract.json 的是发起方**，对方不重复写（它只需在群里确认）。
+
+**停止条件**：任一方在群里明确说"契约/接口已对齐"且发起方已落 `contract.json` + `status: aligned`，这轮群内协作即结束。
+
+#### 3.2.4 契约漂移兜底（关键闭环）
+
+（场景：后端独立开发期间改了已对齐的端点/字段。）两个闸门都在**本实例本地**闭环，不依赖对方实时在场：
+
+- **verify 漂移检测**（第 6 节步骤 6）：`contract_checker.py` 在 contract 层比对——当前仓库 `business_code` 是否仍实现 `contract.json` 声明的端点。两级哨兵：**path**（现有语义：路径是否被引用）；**字段级**（7.15 扩展）：端点声明可选 `fields`/`response.fields` 时，对每个字段名做与 path 相同的引用检查，**未声明则不查（默认关）**。任一级不引用 → contract 层 FAIL、归因本仓库 stack.type。
+- **重确认子流程**（FAIL 且归因是本仓库 stack 类型时，在回到步骤 5 修复前先走）：把漂移差异组织成一条"漂移重确认"消息 @ 对方发到群里，`contract-state.json` 置 `status: drifted, pending_version: <new>`；等对方新会话确认/建议修正后再更新 `contract.json` 的 version 与端点声明，回到步骤 5 修实现。
+- **建 MR 闸门**（步骤 8 的 `create-mr.sh`）：该 task 带 `contract.json` 时，**建 MR 前先收敛**——以 `contract-state.json` 记录的 `last_message_id` 为游标，用 `lark-cli` 查群里该 task 的确认消息，把最新 ack 版本写回本地状态；若收敛结果 ≠ `contract.json` 的 `meta.version`（有漂移未闭环），`create-mr.sh` exit 2 拒绝建 MR 并提示先完成群内重确认。这与 `approval-gate.sh`（拦 `finish-task.sh`）同一治理思路，但挂在建 MR 这一侧。
+
+这样"对齐一次就独立开发"不会变成"契约漂移了对方也不知道"的隐患，形成一个闭环而不是单向脱钩。
+
+**验收（写进 7.15）**：模拟一次前后端在群里对齐接口→确认→各自独立开发→后端改动破坏已对齐端点/字段的场景：`contract_checker.py` 在 verify 阶段检出快照差异并归因本仓库；`create-mr.sh` 在收敛到群内新确认前被拦（exit 2）；触发一次群内"漂移重确认"往返后，确认收敛，建 MR 放行。
 
 ### 3.3 插件与运行环境解耦（新增的设计原则）
 
@@ -176,10 +237,13 @@ echo "$VENV_DIR/bin/python3"
 
 `create-mr.sh`/`finish-task.sh`（以及第6节里 Team Lead 编排逻辑涉及的任何 GitLab 交互）内部**必须全部调用 `glab` 命令行**，不允许脚本直接拼 GitLab REST API 请求（比如自己 `curl` 打 `/api/v4/projects/:id/merge_requests`）。这不是新功能，是对现有实现方式的显式约束记录——建 MR 用 `glab mr create`，查状态用 `glab mr view`/`glab mr note list`，合并用 `glab mr merge`。好处：`glab` 已经处理好认证（`GITLAB_TOKEN`）、分页、错误提示这些细节，脚本只需要关心业务逻辑；也让 4.2 节"外部依赖清单"里的 `glab` 探测覆盖到所有 GitLab 相关操作，不会有一部分操作绕过依赖检查直接用裸 API 调用。
 
-**目标仓库（团队自己的项目）需要有的东西**（沿用现有约定，不新增）：
+**目标仓库（团队自己的项目）需要有的东西**（沿用现有约定；跨仓库协作所需的条目见 3.2，属"启用 3.2 协作的任务才需要"）：
 - `harness.yaml`（声明 `stack.type` + 分层测试命令，`ads`/`ads-web` 已有现成例子）
 - `.ai-devflow/<task-id>/`（运行时产物目录，需要加进该仓库自己的 `.git/info/exclude`）
 - 团队自己的 `CLAUDE.md`（插件不再像 Dockerfile 那样焊死一份 `CLAUDE.docker.md` 糊在所有项目头上，而是插件的 Skill 里会提示"读取当前项目已有的 CLAUDE.md 补充上下文"，尊重每个团队自己的组织知识）
+- **`harness.yaml`（启用 3.2 协作的任务）**：`gates.full` 含 `contract` 层时其命令由既有 `stack.contract_cmd` 提供（如 ads 的 `python3 <checker> .ai-devflow/contract.json .`）；字段级漂移检测**不新增 harness 命令**——依赖端点里声明的可选 `fields`/`response.fields` + 既有 `paths.business_code`，见 7.15。不启用协作的仓库可完全不配，不破坏现有结构。
+- **`.ai-devflow/partner.yaml`**（3.2 目标仓库侧静态配置：`me`/`partner`/`collaboration`，见 3.2.2；该文件不进 git 远端）
+- **`.ai-devflow/<task-id>/contract.json` + `contract-state.json`**（3.2 对齐快照与本地断点状态机，见 3.2.3/3.2.4）
 
 ---
 
@@ -196,14 +260,16 @@ echo "$VENV_DIR/bin/python3"
 
 对应原 `devflow-teamlead/SKILL.md` 的 8 步，去掉"派发 frontend **和** backend"，把 7.7（intent.md）接入主流程；**2026-09-02 再次调整**：去掉 sandbox 封装脚本（改成 Skill 内直接执行 git 命令）、去掉评审回路步骤（MR建开后不再自动回修，人工自己处理评论）——现在是 9 步：
 
-1. **需求理解 + 写 intent.md**：`lark-cli` 拿分配给**当前仓库**的任务全字段，图片走 sonnet 识图。按 `templates/INTENT-TEMPLATE.md` 写 `.ai-devflow/<task-id>/intent.md`，末尾加 `## Decision: Accept/Reject/Defer + 理由`。**Defer 型任务到此止步**——只飞书知会一句，不进入步骤2，不产生 sandbox 与 MR。
+> **跨仓库协作叠加层（2026-09-02 定稿，见 3.2）**：下面的 9 步是**单仓库基线流程**。仅当任务带跨仓库契约影响面、且该仓库 `partner.yaml` 的 `collaboration.auto_align: true` 时，才在其上叠加协作子协议：步骤 1 影响面判定命中"涉及跨仓库 + 接口契约" → 插入**阶段 0 对齐**（3.2.3，产出 `contract.json` + `contract-state.json`）再进步骤 2；随后在步骤 6（contract 层漂移检测/重确认）与步骤 8（`create-mr.sh` 前收敛闸门）接入 3.2.4。**纯本仓库任务不进阶段 0、不读 partner.yaml，流程与现状完全一致。**
+
+1. **需求理解 + 写 intent.md**：`lark-cli` 拿分配给**当前仓库**的任务全字段，图片走 sonnet 识图。按 `templates/INTENT-TEMPLATE.md` 写 `.ai-devflow/<task-id>/intent.md`，末尾加 `## Decision: Accept/Reject/Defer + 理由`。**Defer 型任务到此止步**——只飞书知会一句，不进入步骤2，不产生 sandbox 与 MR。Accept 且命中跨仓库契约影响面时，追加 `## Contract scope` 小节（候选对齐端点）作为阶段 0 输入。
 2. **写 SPEC.md**（仅 Accept 才继续）：读取 intent.md，按模板写 `.ai-devflow/<task-id>/SPEC.md`（SPEC 首行引用 intent.md 路径，路径在当前仓库工作区里，不再是容器内 `/app/.ai-devflow/`）。
 3. **飞书知会**需求方。
 4. **建 sandbox**（2026-09-02：不再走封装脚本，Skill 直接执行 git 命令）：`git worktree add .ai-devflow/sandboxes/<task-id> -b task/<task-id>/<ts>`，在当前仓库内建 worktree（隔离同仓库内的并发任务，不是跨仓库隔离）——这一步足够简单，不需要单独维护一个 `make-sandbox.sh` 文件。
 5. **派发开发**：用 Task 工具派发给当前仓库对应的 persona（读 `harness.yaml` 的 `stack.type` 决定是 `frontend` 还是 `backend`），该 agent 自己改代码+写测试+自查（见第5节新增规则）。
-6. **汇总验证**：跑 `full-verify.sh`，命令定义来自当前仓库自己的 `harness.yaml`。
+6. **汇总验证**：跑 `full-verify.sh`，命令定义来自当前仓库自己的 `harness.yaml`。带 `contract.json` 的任务，contract 层按 3.2.4 做字段级漂移比对，检出即进重确认子流程。
 7. **FAIL → 归因回流**：`attribute.py` 不变，按 owner 打回步骤5，`repair-counter.py` 计数≥3升级人工。
-8. **PASS → Review/建MR**：`ai-review.sh` 读插件自带 `policies/REVIEW.md` 生成 review 包 → `create-mr.sh`（内部走 `glab mr create`，见4.3）建 MR → 飞书卡片通知。**建完 MR 编排流程即告一段落**——不再自动检查/处理 MR 评论，评论由用户自己在 GitLab 上人工跟进（2026-09-02 去掉，原7.13的"@claude 自动回修回路"）。
+8. **PASS → Review/建MR**：`ai-review.sh` 读插件自带 `policies/REVIEW.md` 生成 review 包 → `create-mr.sh`（内部走 `glab mr create`，见4.3）建 MR → 飞书卡片通知。**建完 MR 编排流程即告一段落**——不再自动检查/处理 MR 评论，评论由用户自己在 GitLab 上人工跟进（2026-09-02 去掉，原7.13的"@claude 自动回修回路"）。带 `contract.json` 的任务，`create-mr.sh` 建 MR 前先执行 3.2.4 的收敛闸门（群内最新确认版本 ≠ `contract.json` 的 `meta.version` 则 exit 2 拒绝）。
 9. **等人工确认 → merge**：`finish-task.sh`（内部走 `glab mr merge`，见4.3）merge + worktree 清理 + 埋点（`approval-gate.sh` hook 强制检查 `HUMAN_APPROVED` 标记文件存在才放行）。
 
 ---
@@ -389,9 +455,36 @@ event = {
 
 从该仓库真实任务里挑可自包含复现的（纯前端/可 stub 后端），目标20+最低10。目录结构 `evals/<name>/{task.md,setup.sh,check.sh}`。插件自带 `${CLAUDE_PLUGIN_ROOT}/scripts/run-evals.py`：每个 eval 在临时 worktree 跑 `claude -p "<task.md>" --allowedTools "Read,Edit,Bash"`，跑 `check.sh` 断言，汇总JSON通过率。CI（该仓库自己的）命中 `CLAUDE.md`/`.claude/**`/`evals/**` 变更触发，通过率<80%阻止合并。**每起生产事件补一条 eval**，与7.13联动。成本提示：10-20个eval全跑一次约$1-3。
 
----
+### 7.15 跨仓库契约协作子协议（spec 3.2 落地，2026-09-02 定稿）
 
-## 8. 与 ai-infra / 现有 Dockerfile 的集成边界
+把 3.2 从"机制描述"固化为插件可实现的结构。前置事实见 3.2（文件系统隔离、靠飞书群消息闭环、bot 互 @ 能力已验证）。**实现范围**：纯本仓库任务完全不受影响——所有协作逻辑只在 `partner.yaml` 存在且命中契约影响面时才激活。
+
+**新增/改动文件清单**：
+- Create `scripts/partner.py`：读/校验 `.ai-devflow/partner.yaml` + `.ai-devflow/<task-id>/contract-state.json`；子命令 `check <repo>`（配置是否齐）、`state <task-id> <status> [--ack-version V] [--msg-id M]`（本地状态机读写）、`gather <task-id>`（收敛：以 `last_message_id` 为游标，`lark-cli` 查群里该 task 的 `[cc-task ...]` 消息，回写最新 ack 版本，stdout 收敛结果）。
+- Create `scripts/contract-align.py`：阶段 0 对齐写快照——读 `intent.md` 的 `## Contract scope` 与群里确认到的端点，写 `.ai-devflow/<task-id>/contract.json`（结构沿用现有 checker：`{api:[{path,method,...}], meta:{aligned_with, version:"M.m", aligned_at}}`）+ `contract-state.json`（`status: aligned`）。**不新增校验逻辑**：contract_checker.py 的结构校验（必填 `path`/`method`、多余字段兼容）原样适用。
+- Modify `scripts/contract_checker.py`：**字段级引用检查**（现有"path 被引用"语义保留，纯增量）——端点声明可选 `fields` 或 `response.fields` 时，对每个字段名做与 path 相同的 business_code 文本引用检查；**不声明则只做 path 检查（默认关）**。任一级不引用 → exit 1，stderr 分别列出 `missing_paths`/`missing_fields`（形如 `path#field`），归因沿用现有本仓库 stack.type 语义。不新增 harness 命令、不要求 `contract_cmd` 返回任何实现结构。
+- Modify `scripts/create-mr.sh`：**建 MR 前收敛闸门**——该 task 有 `contract.json` 时先调 `partner.py gather <task-id>`，收敛后 `ack_version != meta.version` 或 `contract-state.status == drifted` 则 exit 2 拒绝并提示（与 `approval-gate.sh` 拦 `finish-task.sh` 同一治理思路，挂在建 MR 这一侧）。
+- Modify `skills/devflow-start-task/SKILL.md`：
+  - **步骤 1 影响面判定**：`Accept` 且命中跨仓库契约影响面 → 写 `## Contract scope`；有 `partner.yaml` 且 `auto_align: true` → 执行阶段 0（调 `contract-align.py` 写快照、按 3.2.3 发对齐请求）。
+  - **协作消息识别（新会话被唤起时的前置规则，放在"栈判定"之后）**：消息正文含 `[cc-task <task-id>][contract <M.m>]` 前缀 → 若本地 `contract-state.json` 有该 task 且 `status` 为 `pending`/`drifted` → 按前缀动作处理（确认 → 回 `[cc-task X][contract M.m] 确认`；拒绝 → 附差异），处理完更新本地状态，**不进入 9 步主流程**（这是"bot 互 @ 协作"的入口，不是新任务）。
+  - **步骤 6**：contract 层 FAIL 且归因本仓库 → 先走重确认子流程（3.2.4：发漂移重确认 @ 对方、`contract-state` 置 `drifted`）再回步骤 5。
+- Modify `scripts/emit-event.py`：**不新增事件类型**（遵守 7.11 的 enum 同步约束）——对齐/漂移动作复用 `task_updated`，`data` 带 `phase: "contract-align"|"contract-drift"` + `contract_version`。`docs/telemetry-schema.json` 的 enum 不变，仅 `task_updated.data` 属性说明补这两个字段。
+
+**机器可读消息前缀协议（bot↔bot，双方 SKILL 识别用）**：
+```
+[cc-task <task-id>][contract <M.m>] <action>
+action ∈ {发起契约对齐 / 确认 / 拒绝：<差异> / 契约漂移：<A→B>，请重新确认}
+```
+
+**埋点链路**：对齐事件（`task_updated`，phase=contract-align）带 parent_event_id → `analytics.py` 的 `chain` 查询可重建 task→contract-align→verify(contract)→mr 链路（7.11 验收复用，不新增查询）。
+
+**验收**：
+1. 两个临时仓库各建 `harness.yaml`（前后端）+ `.ai-devflow/partner.yaml` 互指，模拟一次群内对齐：前端 bot 发起对齐请求（含 `[cc-task]` 前缀）→ 后端 bot 会话识别为协作消息 → 回复确认 → 前端写 `contract.json`（`meta.version=1.0`）、`contract-state` 置 `aligned`。
+2. 漂移场景：后端实现改动已对齐端点 → verify 阶段 `contract_checker.py` 检出现有/字段级差异并归因本仓库 → `create-mr.sh` 在未收敛到群内新确认前 exit 2（复刻 3.2 验收原文）。
+3. 收敛后放行：后端发漂移重确认 → 前端确认 → `partner.py gather` 收敛 `ack_version=1.1` 且 `contract.json` 更新为 `meta.version=1.1` → `create-mr.sh` 通过。
+4. 纯本仓库任务回归：无 `partner.yaml` 或未命中契约影响面时，流程与 3.2 定稿前的 9 步完全一致。
+
+**留档（实现 Task 10 时收敛，不阻塞本项结构定稿）**：字段名引用检查是文本启发式（与 path 检查同级别），可能对过泛字段名（如 `id`）误报/漏报，深度/忽略集作为后续增强；群消息游标用 `message_id` 还是时间戳；`contract-state.json` 的字段名终稿。
 
 本 spec **不重新设计 ai-infra**，只标注边界：
 - `provisioner.js` 现在的 `containerSpec` 用的是 `ai-native` 那个重的自定义 Dockerfile（焊死 devflow 模板、飞书/GitLab/OWL 全套 CLI）。
@@ -409,7 +502,7 @@ event = {
 
 ## 10. Self-Review
 
-- **Placeholder scan**：无 TBD/TODO，第9节明确列出的是"有意暂缓"而非遗漏。
-- **一致性**：第2节的决策记录与第3-7节的具体设计逐条对应，没有矛盾；"两个独立容器"这条决策贯穿了第3节架构图、第5节 agent 自查规则新增的原因（没有第三方可派）、第6节编排流程去掉"同时派发前后端"这几处，是自洽的。
-- **范围检查**：聚焦"插件本身怎么设计"，ai-infra 侧的镜像改造明确排除在外（第8节），没有把两个项目的改造混在一份 spec 里。
-- **依赖顺序**：本 spec 完成后，下一步是用 `superpowers:writing-plans` 把第4-6节拆成可执行的实施计划（先搭插件骨架 `.claude-plugin/plugin.json` + 目录结构，再移植 scripts，再写 agents/skills，最后接 hooks/policies）。
+- **Placeholder scan**：无 TBD/TODO，第9节明确列出的是"有意暂缓"而非遗漏；7.15 末尾"留档"列的是实现 Task 10 时收敛的实现细节终稿，非本次结构空缺。
+- **一致性**：第2节的决策记录与第3-7节的具体设计逐条对应，没有矛盾；"两个独立容器"这条决策贯穿了第3节架构图、第5节 agent 自查规则新增的原因（没有第三方可派）、第6节编排流程去掉"同时派发前后端"这几处，是自洽的。"文件系统隔离 + 飞书消息闭环"这条 3.2 新增决策与现有"一仓库一实例"（3.1）互不冲突：协作只叠加在契约影响面任务上，纯本仓库流程（第6节基线）不受影响；`contract_checker.py` 结构校验（7.15 复用）与 `emit-event.py` 的 enum 同步约束（7.11，7.15 遵守）也逐条对应，没有为协作引入违背既有约束的新逻辑。
+- **范围检查**：聚焦"插件本身怎么设计"，ai-infra 侧的镜像改造明确排除在外（第8节），没有把两个项目的改造混在一份 spec 里。3.2 落地的全部改动都在插件仓库与目标仓库 `.ai-devflow/` 内，不引入共享存储/跨容器基建。
+- **依赖顺序**：本 spec 完成后，下一步是用 `superpowers:writing-plans` 把第4-6节拆成可执行的实施计划（先搭插件骨架 `.claude-plugin/plugin.json` + 目录结构，再移植 scripts，再写 agents/skills，最后接 hooks/policies）。Task 1-9 已完成实施后，3.2/7.15 落为计划的阶段 F（Task 10：跨仓库协作子协议），其代码依赖 `contract_checker.py`/`create-mr.sh`/SKILL 结构（Task 4/6/8/3 已交付），不存在前向依赖。

@@ -1227,6 +1227,40 @@ git commit -m "feat(hooks): protect-paths + approval-gate 护栏接入 hooks.jso
 
 ---
 
+## Phase F — 跨仓库协作子协议（spec 3.2 / 7.15 落地，2026-09-02 定稿）
+
+> 前置事实与完整机制见 spec 3.2 与 7.15（本次先把设计定稿进 spec/plans，**代码后置**，由用户后续确认再执行）。三条定稿约束：两实例文件系统隔离 → 状态真值只落飞书群消息；`partner.yaml` 落在目标仓库 `.ai-devflow/`；协作是叠加在 9 步上的子协议，纯本仓库任务与 Task 1-9 交付物行为不变。
+> 本 Task 依赖 Task 3（SKILL 结构）/4（verify 层）/6（contract 与 create-mr 的 verify 基建）/8（create-mr.sh），实现前先对照 spec 7.15 的"留档"三项（漂移比对规范、群消息游标、state 字段终稿）收敛。
+
+### Task 10: 协作配置 + 状态机 + 建 MR 收敛闸门 + SKILL 阶段 0
+
+> **状态：2026-09-02 已实现 + 测试全绿**（partner 13 / align+fields+checker 17 / create-mr gate 4/4 / 全量 pytest 58）；未 commit（用户统一确认后提交）。
+
+**Files:**
+- Create: `scripts/partner.py`（读/校验 `partner.yaml` + `contract-state.json`；子命令 `check`/`state`/`gather`，`gather` 以消息游标用 `lark-cli` 查群确认）
+- Create: `scripts/contract-align.py`（阶段 0 对齐写 `contract.json` 快照 + 状态机）
+- Modify: `scripts/contract_checker.py`（新增字段级漂移比对，仅 `contract_cmd` 声明时启用；未声明退回现 path 引用检查）
+- Modify: `scripts/create-mr.sh`（建 MR 前收敛闸门：有 `contract.json` 则 `gather`，未收敛 exit 2）
+- Modify: `skills/devflow-start-task/SKILL.md`（步骤 1 影响面判定 + `## Contract scope` + 阶段 0；新会话协作消息识别前置规则；步骤 6 重确认子流程）
+- ~~Modify~~ `scripts/emit-event.py`：**无需代码改动**——`emit-event.py` 已支持 `--data` 任意键，`data.phase=contract-align|contract-drift` + `contract_version` 由调用侧 `--data` 传入即可（不新增事件类型，遵守 7.11）
+- Create: `scripts/test/test_partner.py`、`scripts/test/test_contract_align.py`、`scripts/test/test_contract_fields.py`、`scripts/test/test_create_mr_gate.sh`（验收见 spec 7.15）
+
+**Interfaces:**
+- `partner.py check <repo>` → 0/1（配置齐否）；`state <task-id> <status> [--ack-version V] [--pending-version V] [--cursor-ms N]`；`get <task-id>`；`gather <task-id>` → 收敛 JSON（`LARK_CMD`/`PARTNER_FEISHU=skip|auto` 可注入）。
+- `contract-align.py <task-id>` → 写 `contract.json`（含 `meta.version`）+ `contract-state.json`（`aligned`）。
+- `create-mr.sh` 带契约时输出拒绝原因 / 放行，行为对齐 spec 7.15 验收 1-4。
+
+- [ ] **Step 1: 对照 spec 7.15 收尾三项留档**（漂移比对规范/游标/state 字段），据此写失败测试（`test_partner.py` 等，验收 1-4 前置）
+- [ ] **Step 2: 创建 `scripts/partner.py`**（配置读取 + 状态机 + 收敛查询）
+- [ ] **Step 3: 创建 `scripts/contract-align.py`**（阶段 0 快照写入，复用现有 checker 结构校验）
+- [ ] **Step 4: 修改 `scripts/contract_checker.py`**（字段级漂移，默认关）
+- [ ] **Step 5: 修改 `scripts/create-mr.sh`**（收敛闸门）
+- [ ] **Step 6: 修改 `skills/devflow-start-task/SKILL.md`**（阶段 0 + 识别前置 + 步骤 6/8 接线）
+- [ ] **Step 7: 跑测试确认全绿**（spec 7.15 验收 1-4 + 既有 9 步回归）
+- [ ] **Step 8: 提交（需用户确认）**
+
+---
+
 ## Self-Review
 
 **1. Spec coverage（spec 第 4-7 节 → Task 映射）**
@@ -1253,8 +1287,9 @@ git commit -m "feat(hooks): protect-paths + approval-gate 护栏接入 hooks.jso
 | 7.12 Gate 分级 / plan.md | — | 业务决策未定，spec 明确"技术方案就位，等启用"，**不在本计划** |
 | 7.13 评审回灌 | Task 3/6 | 去掉自动回修回路；CLAUDE.md 回灌规则写入 Skill 步骤 8 说明 + agents 规则 |
 | 7.14 evals 套件 | — | 需真实仓库任务样本，**本计划只搭插件骨架，evals 属后续**（spec 7.14 要求从真实任务挑，插件刚建无任务可挑） |
+| 3.2 / 7.15 跨仓库协作子协议 | Task 10 | 定稿进 spec+本计划（代码后置）；实现时按 7.15 留档三项收敛；依赖 Task 3/4/6/8 基建 |
 
-**有意排除**：7.12（业务决策未定）、7.14（需真实任务样本，属插件落地后第二阶段）、8（ai-infra 侧改造不在范围）、9（未决问题留档）。
+**有意排除**：7.12（业务决策未定）、7.14（需真实任务样本，属插件落地后第二阶段）、8（ai-infra 侧改造不在范围）、9（未决问题留档）。**7.15 本计划只定稿设计**（Phase F），代码实现由用户确认 Task 10 后执行，不属于"已完成 Task 1-9"的验收范围。
 
 **2. Placeholder scan**：除上述两个有意排除项外，每个 Task 的每个 Step 都有具体文件路径/代码/测试命令。`run-hook.cmd` 的 bat/bash 混合块标注"以复制 superpowers 原文件为准"——这是跨平台歧义的实际解决方案，不是占位。
 

@@ -24,16 +24,32 @@ stack_type=$(python3 -c "import yaml; print(yaml.safe_load(open('harness.yaml'))
 
 `frontend` → 用 `agents/frontend.md`，验证层跑 frontend_unit_cmd/e2e；`backend` → 用 `agents/backend.md`，验证层跑 backend_unit_cmd/api。没有 harness.yaml 则停下询问。
 
+## 协作消息识别（3.2 前置，先于 9 步）
+
+当前会话若由飞书群消息触发，**先看消息正文是否带机器前缀** `[cc-task <task-id>][contract <M.m>]`：
+
+- **带前缀** → 这是搭档 bot 的**契约协作消息**，不是新任务。若本地存在 `.ai-devflow/<task-id>/contract-state.json` 且有对应状态，按动作处理，**处理完不进 9 步主流程**：
+  - `确认` → 你正是被请求确认方且契约可接受 → 回复 `[cc-task <task-id>][contract <M.m>] 确认`（@ 发起方）。
+  - `拒绝：<差异>` → 回复 `[cc-task <task-id>][contract <M.m>] 拒绝：<差异>`。
+  - `契约漂移：... 请重新确认` → 核对漂移后回复确认或拒绝。
+  协作消息只做"对齐需求边界与接口契约"，不合作改代码。前缀工具：`${CLAUDE_PLUGIN_ROOT}/scripts/partner.py` 的 `parse_collab_message` 逻辑。
+- **不带前缀** → 走下方 9 步主流程。
+
 ## 9 步流程
 
 1. **需求理解 + 写 intent.md**：`lark-cli task tasks get --task-guid <task-id> --as user` 拿全字段；附件图片下载到本地用 sonnet 模型识图（识完切回默认模型）。按 `templates/INTENT-TEMPLATE.md` 写 `.ai-devflow/<task-id>/intent.md`，末尾填 `## Decision: Accept/Reject/Defer + 理由`。**Defer 型任务到此止步**——只飞书知会一句，不进入步骤 2，不产生 sandbox 与 MR。
+   - **Accept 时做影响面判定**（3.2）：按需求语义 + 改动预计触及的模块/接口，判断是 **纯本仓库** / **涉及跨仓库 + 接口契约** / **纯对方仓库**。纯对方仓库 → 不接手，飞书回一句"该由 @partner 处理"，终止。
+   - 命中"涉及跨仓库 + 接口契约" → intent.md 追加 `## Contract scope` 小节列候选对齐端点；且该仓库 `.ai-devflow/partner.yaml` 的 `collaboration.auto_align: true` 时，执行**阶段 0 对齐**（见下），再进步骤 2。纯本仓库任务不读 partner.yaml、不进阶段 0。
+   - **阶段 0 对齐（3.2.3，auto_align 且契约影响面）**：① 把 `## Contract scope` 候选端点组织成对齐请求 @ partner 发到 `partner.yaml` 声明的群；② 等对方回复确认/拒绝（拒绝则修订重发）；③ 对方确认后，用 `${CLAUDE_PLUGIN_ROOT}/scripts/contract-align.py <task-id> --endpoints '<对齐后端点 JSON>' --aligned-with <对方bot> --version 1.0` 写 `.ai-devflow/<task-id>/contract.json` + 状态机置 aligned。①失败不阻塞，回飞书说明让用户处理。
 2. **写 SPEC.md（仅 Accept）**：读取 intent.md，按 `templates/SPEC-TEMPLATE.md` 写 `.ai-devflow/<task-id>/SPEC.md`（首行引用 intent.md 路径）。AC 逐条可映射到测试；Task Breakdown 标注 owner（frontend/backend）。
 3. **飞书知会**需求方：SPEC 路径 + 需求摘要（`lark-cli` 失败不阻塞流程）。
 4. **建 sandbox**：`git worktree add .ai-devflow/sandboxes/<task-id> -b task/<task-id>/$(date +%s)`（当前仓库内隔离并发任务；worktree add 前先 `git fetch origin && git checkout main/master && git pull --ff-only`，失败即中止）。把当前仓库的 `harness.yaml` 复制进 sandbox 根目录。
 5. **派发开发**：用 Task 工具派发给当前仓库对应 persona（`agents/frontend.md` 或 `agents/backend.md`，见栈判定）。传 SPEC 相关章节 + sandbox 路径。该 agent 自己改代码+写测试+commit 前自查（见 agents 硬性规则 2）。
 6. **汇总验证**：跑 `${CLAUDE_PLUGIN_ROOT}/scripts/full-verify.sh <sandbox_path>`，读 `<sandbox_path>/.ai-devflow/verification.json`。**覆盖率自检**：`git diff --stat <基线>...HEAD` 若改了 business_code 却无 test_code 变化，即使 PASS 也退回步骤 5 补测试。把状态写回 SPEC 第 4 章。
+   - **contract 层 FAIL 且归因本仓库（带 contract.json 的任务）**：先走 3.2.4 重确认子流程再回步骤 5——把漂移差异发 `[cc-task <task-id>][contract <新版本>] 契约漂移：<差异>，请重新确认` @ partner，`partner.py state <task-id> drifted --pending-version <新版本>`；对方确认后 `contract-align.py` 更新快照版本、`partner.py state <task-id> aligned --ack-version <新版本>`，再修实现复验。
 7. **FAIL → 归因回流**：`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/attribute.py <verification.json>` 归因（subtype=timeout/infra_exception 自动归 infra）；按 owner 把 failure 包打回步骤 5 对应 persona 修复；复验后 `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/repair-counter.py <task-id> <repo> <PASS|FAIL>` 更新计数，`escalate: true`（连续≥3）→ 飞书通知人工暂停任务。
 8. **PASS → Review/建MR**：跑 `${CLAUDE_PLUGIN_ROOT}/scripts/ai-review.sh <sandbox_path> <task-id>` 生成 review 包（清单来自插件 `policies/REVIEW.md`，产出机读 `review.json`）；基于 review 包做 AI 判断，把 `review.json` 的 verdict 改为 PASS/FAIL；FAIL 回步骤 7。PASS 则 `${CLAUDE_PLUGIN_ROOT}/scripts/create-mr.sh <sandbox_path> <task-id>` 建 MR（内部走 `glab mr create`），飞书卡片通知人工。**建完 MR 编排即告一段落**——MR 评论由用户人工在 GitLab 跟进，插件不再自动回修。
+   - **带 contract.json 的任务，create-mr.sh 自带收敛闸门**（3.2.4）：本地状态未到 aligned 或 ack_version ≠ contract meta.version 会被 exit 2 拦截。放行前先收敛群内确认：`CREATE_MR_FEISHU_CONVERGE=1 ${CLAUDE_PLUGIN_ROOT}/scripts/create-mr.sh ...`（会先 `partner.py gather` 把群里最新确认收敛回本地）；或确认本轮无需群确认时先手动 `partner.py state <task-id> aligned --ack-version <meta.version>`。
 9. **等人工确认 → merge**：人工在飞书确认后，先 `touch .ai-devflow/<task-id>/HUMAN_APPROVED` 创建确认标记（`approval-gate.sh` hook 检查此文件，缺失则拦截），再跑 `${CLAUDE_PLUGIN_ROOT}/scripts/finish-task.sh <task-id> <repo> <sandbox_path> <mr-url>`（内部走 `glab mr merge` + worktree 清理 + 埋点）。
 
 ## 首次在某仓库运行
