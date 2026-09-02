@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["type", "timestamp", "task_id"],
+  "properties": {
+    "type": {
+      "enum": ["task_created", "state_change", "test_result", "failure_attributed", "repair_round", "mr_created", "mr_merged", "cost"]
+    },
+    "timestamp": { "type": "string" },
+    "task_id": { "type": "string" },
+    "repo": { "type": "string" },
+    "event_id": { "type": "string" },
+    "parent_event_id": { "type": ["string", "null"] },
+    "duration_ms": { "type": "integer" },
+    "result": { "enum": ["PASS", "FAIL", "NOT_RUN"] },
+    "owner": { "type": "string" },
+    "round": { "type": "integer" },
+    "token_cost": { "type": "number" },
+    "input_tokens": { "type": "integer" },
+    "output_tokens": { "type": "integer" },
+    "cache_creation_input_tokens": { "type": "integer" },
+    "cache_read_input_tokens": { "type": "integer" },
+    "turn_count": { "type": "integer" },
+    "transcript_saved_to": { "type": "string" },
+    "data": { "type": "object" }
+  }
+}

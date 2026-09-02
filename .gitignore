@@ -1,0 +1,6 @@
+# SDD workspace (ledger/briefs/reports — scratch, not source)
+.superpowers/
+
+# Python bytecode
+__pycache__/
+*.pyc
