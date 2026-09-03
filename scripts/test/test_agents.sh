@@ -10,9 +10,10 @@ for f in frontend backend; do
   # 规则1：business_code 改必须同步 test_code
   grep -q 'business_code' "$FILE" || { echo "$f: rule1 missing (business_code)"; exit 1; }
   grep -q 'test_code' "$FILE" || { echo "$f: rule1 missing (test_code)"; exit 1; }
-  # 规则2：commit 前自查 full-verify，路径用 CLAUDE_PLUGIN_ROOT
-  grep -q 'CLAUDE_PLUGIN_ROOT' "$FILE" || { echo "$f: must reference CLAUDE_PLUGIN_ROOT"; exit 1; }
-  grep -q 'full-verify' "$FILE" || { echo "$f: rule2 missing (full-verify)"; exit 1; }
+  # 规则2：commit 前调用 skill:verify --self-check 自查（不再直接内嵌 full-verify.sh 调用，
+  # 硬性规则已抽到 skills/verify/SKILL.md，agent md 只保留角色定义 + 调用方式）
+  grep -q -- '--self-check' "$FILE" || { echo "$f: rule2 missing (--self-check)"; exit 1; }
+  grep -qi 'skill:verify\|skills/verify' "$FILE" || { echo "$f: rule2 must reference skill:verify"; exit 1; }
   # 禁止容器硬编码
   grep -q '/opt/harness\|/app/' "$FILE" && { echo "$f: container path leak"; exit 1; }
 done

@@ -17,4 +17,4 @@ tools: Read, Write, Edit, Bash, Glob, Grep, LS
 ## 硬性规则（违反视为任务未完成）
 
 1. **改了 `paths.business_code` 必须同步写/改 `paths.test_code`**（见仓库 harness.yaml）：自检 `git diff --name-only`，若只有 business_code 路径、没有 test_code 路径，先补测试再继续。
-2. **commit 前必须自己跑一次 `${CLAUDE_PLUGIN_ROOT}/scripts/verify/full-verify.sh <sandbox_path>` 自查**，把 verification 结果（含每层 PASS/FAIL）贴进给 Skill 的完成报告；自查 FAIL 禁止 commit，先修完再提交。
+2. **commit 前必须调用 `skill:verify --self-check` 自查**，把结果（含每层 PASS/FAIL）贴进给 Skill 的完成报告；自查 FAIL 禁止 commit，先修完再提交。
