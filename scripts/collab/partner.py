@@ -12,6 +12,11 @@
   check <repo_dir>
       读/校验 <repo_dir>/.ai-devflow/partner.yaml 结构。协作所需字段齐 → exit 0；
       文件缺失或结构不全 → exit 1（stderr 说明缺什么）。
+  init [--bot B] [--group-id G] [--auto-align] [--no-enable] [--force] [--dir REPO]
+      按需写入/补齐 <dir>/.ai-devflow/partner.yaml。编排 skill 判定需求涉及
+      协作、但本地缺配置时走这里当场初始化（把"@ 谁 / 在哪个群"落成文件）。
+      enabled 时要求 bot+group_id 齐（校验同 check）；已存在且完整时需 --force
+      覆盖。写后打印生成路径与完整结构。
   state <task_id> <status> [--ack-version V] [--pending-version V] [--cursor-ms N] [--dir REPO]
       读写 <dir>/.ai-devflow/<task_id>/contract-state.json。status ∈
       draft|pending|aligned|drifted|superseded。写后 stdout 打印最新状态 JSON。
@@ -117,6 +122,21 @@ def partner_errors(data):
     if not partner.get("group_id"):
         errs.append("partner.group_id 缺失（双方共同飞书群 chat_id）")
     return errs
+
+
+def write_partner(data, base):
+    """写 <base>/.ai-devflow/partner.yaml。返回 (path|None, err)。"""
+    if yaml is None:
+        return None, "PyYAML required to write partner.yaml"
+    p = partner_path(base)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False,
+                           default_flow_style=False)
+    except OSError as e:
+        return None, f"cannot write partner.yaml: {e}"
+    return p, ""
 
 
 # ── 协作消息解析 ────────────────────────────────────────────────────────
@@ -253,16 +273,28 @@ def gather(task_id, base, lark_cmd, feishu_mode):
 # ── main ────────────────────────────────────────────────────────────────
 
 def main():
-    # 管道输出统一 UTF-8（notes 含中文；Windows pipe 默认 locale 会炸）
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    # 管道输出统一 UTF-8（notes/错误含中文；Windows pipe 默认 locale 会炸）
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     p = argparse.ArgumentParser(prog="partner.py")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("check")
     sp.add_argument("dir", nargs="?", default=DEFAULT_DIR)
+
+    sp = sub.add_parser("init")
+    sp.add_argument("--bot", default=None, help="对方 bot 名（enabled 时必填）")
+    sp.add_argument("--group-id", default=None, help="双方共同飞书群 chat_id（enabled 时必填）")
+    sp.add_argument("--auto-align", action="store_true", default=None,
+                    help="命中'仅需对齐字段'时是否自动发起对齐（默认 false）")
+    sp.add_argument("--no-enable", action="store_true",
+                    help="写 collaboration.enabled: false（关闭协作，不要求 bot/group_id）")
+    sp.add_argument("--force", action="store_true",
+                    help="已存在完整 partner.yaml 时也覆盖重建")
+    sp.add_argument("--dir", default=DEFAULT_DIR)
 
     sp = sub.add_parser("state")
     sp.add_argument("task_id")
@@ -294,6 +326,43 @@ def main():
         bot = (data.get("partner") or {}).get("bot")
         gid = (data.get("partner") or {}).get("group_id")
         print(f"partner: OK partner.bot={bot} group_id={gid}")
+        sys.exit(0)
+
+    if args.cmd == "init":
+        has_file = os.path.isfile(partner_path(args.dir))
+        existing, perr = load_partner(args.dir)
+        if perr and has_file and "cannot parse" in perr:
+            if not args.force:
+                sys.stderr.write("partner: 已有 partner.yaml 解析失败，先手工修正或用 --force 重建\n")
+                sys.exit(1)
+            existing, perr = None, "rebuilt by --force"
+        data = dict(existing) if isinstance(existing, dict) else {}
+        collab = dict(data.get("collaboration") or {})
+        collab["enabled"] = not args.no_enable
+        if args.auto_align is not None:
+            collab["auto_align"] = args.auto_align
+        elif "auto_align" not in collab:
+            collab["auto_align"] = False
+        partner = dict(data.get("partner") or {})
+        if args.bot:
+            partner["bot"] = args.bot
+        if args.group_id:
+            partner["group_id"] = args.group_id
+        data["collaboration"] = collab
+        data["partner"] = partner
+        if has_file and not args.force and not partner_errors(existing if isinstance(existing, dict) else {}):
+            sys.stderr.write("partner: 已有完整 partner.yaml，无需 init；要覆盖请加 --force\n")
+            sys.exit(1)
+        errs = partner_errors(data)
+        if errs:
+            sys.stderr.write("partner: init 结果仍不完整:\n  - " + "\n  - ".join(errs) + "\n")
+            sys.exit(1)
+        wpath, werr = write_partner(data, args.dir)
+        if werr:
+            sys.stderr.write("partner: " + werr + "\n")
+            sys.exit(1)
+        print(f"partner: init OK -> {wpath}")
+        print(json.dumps(data, ensure_ascii=False))
         sys.exit(0)
 
     if args.cmd == "state":

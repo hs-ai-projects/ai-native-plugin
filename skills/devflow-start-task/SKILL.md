@@ -84,6 +84,36 @@ stack_type=$(python3 -c "import yaml; print(yaml.safe_load(open('harness.yaml'))
 - **sender是人类用户**（无论消息是否带前缀）→ 不适用上述bot-boundary规则，
   走下方9步主流程正常自动路由。
 
+## 协作配置按需初始化（判定涉协作但本地缺 partner.yaml 时）
+
+**原则**：一旦判定需求"涉及跨仓库"（步骤1.4的三个分支之一），先确认本地协作
+配置齐了：`partner.py check $PWD` exit 0 = 齐，直接走协议。**配置缺失/不完整
+时不允许静默当"纯本仓库"继续**——停下来向用户引导补齐，这是"@ 对方 bot"
+能真正发出去的先决条件（原实现在缺配置时会静默退化，导致该交接的不交接）。
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/collab/partner.py check $PWD   # exit 0=齐
+```
+
+`check` exit 非 0 时，按顺序引导：
+
+1. 向用户解释：这个需求需要 @ 另一个仓库的 bot，但本仓库还没配协作目标，请
+   提供两样：
+   - `partner.bot`：对方 bot 名（群消息里 @ 谁）
+   - `partner.group_id`：双方所在的共同飞书群 chat_id（在哪个群 @）
+   - 顺带确认 `auto_align`：是否希望在"仅需对齐接口字段"场景自动发起对齐
+     （默认关，一般由字段生产方开启）
+2. 拿到后当场初始化（写 `.ai-devflow/partner.yaml`）：
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/collab/partner.py init \
+     --bot "<对方bot名>" --group-id "<chat_id>" [--auto-align] --dir $PWD
+   ```
+3. `partner.py check $PWD` 复验通过 → 回到步骤1.4按原分支（交接/对齐）继续。
+
+**用户提供不了这两个值时**：不伪造、不当纯本仓库硬做；明确回一句"无法向
+<对方> 发起协作，缺对方 bot 名/共同群 chat_id"，把卡点报给原始发起人或用户，
+由人工决定后续（换协作通道或先手动建群/确认 bot）。
+
 ## 9 步流程
 
 1. **理解需求**
@@ -95,7 +125,9 @@ stack_type=$(python3 -c "import yaml; print(yaml.safe_load(open('harness.yaml'))
    1.2 按 `templates/INTENT-TEMPLATE.md` 写 `.ai-devflow/<task-id>/intent.md`。
    1.3 末尾填 `## Decision: Accept/Reject/Defer + 理由`。**Defer 型任务到此止步**——
        若来源是task-id，@回触发者一句说明；不进入步骤2，不产生sandbox与MR。
-   1.4 **Accept 时做影响面判定**：按需求语义 + 改动预计触及的模块/接口，判断：
+   1.4 **Accept 时做影响面判定**：按需求语义 + 改动预计触及的模块/接口，判断。
+       凡预计触及跨仓库，先跑 `partner.py check $PWD`，非 0 先走上方「协作配置
+       按需初始化」补齐（否则后续 @ 对方 bot 发不出去），再分四类：
        - **纯本仓库** → 直接进步骤2，不读partner.yaml
        - **涉及跨仓库·仅需对齐字段** → intent.md追加`## Contract scope`小节列候选
          对齐端点；该仓库`partner.yaml`的`collaboration.auto_align: true`时执行
