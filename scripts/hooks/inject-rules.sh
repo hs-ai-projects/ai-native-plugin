@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# 每次会话开始把 rules/ 目录下所有常驻规则注入上下文（SessionStart hook）。
+# 每次用户输入把 rules/ 目录下所有常驻规则注入当轮上下文（UserPromptSubmit hook）。
 #
-# 注入机制：SessionStart hook exit 0 时，stdout 的 JSON
-#   {"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"..."}}
-# 会把 additionalContext 文本作为 system-reminder 注入会话开头、第一条用户
-# 消息之前，每次模型请求可读。
+# 注入机制：UserPromptSubmit hook exit 0 时，stdout 的 JSON
+#   {"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"..."}}
+# 会把 additionalContext 作为 system-reminder 注入该次用户输入、模型生成之前。
+# 相较 SessionStart 只在会话开头注入一次，本方案每轮输入都带最新规则——rules/
+# 改动即时生效，不依赖新开会话。代价是每轮重复注入（~5KB），可接受。
 #
 # 规则来源：${CLAUDE_PLUGIN_ROOT}/rules/*.md，每份套同名 XML 标签
 #   <feishu-group-collab> / <dev-workflow> … 作为注入内容的明确边界，模型
@@ -48,7 +49,7 @@ for name in sorted(os.listdir(rules_dir)):
 wrapped = "\n".join(blocks)
 print(json.dumps({
     "hookSpecificOutput": {
-        "hookEventName": "SessionStart",
+        "hookEventName": "UserPromptSubmit",
         "additionalContext": wrapped,
     }
 }, ensure_ascii=False))
