@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
-# 每次用户输入把 rules/ 目录下所有常驻规则注入当轮上下文（UserPromptSubmit hook）。
+# 每次用户输入，把 rules/ 目录下所有常驻规则注入当轮上下文（UserPromptSubmit
+# hook）。仅本地交互终端会话注入——SDK / agent / 远程 bot 驱动的非本地来源跳过。
 #
 # 注入机制：UserPromptSubmit hook exit 0 时，stdout 的 JSON
 #   {"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"..."}}
 # 会把 additionalContext 作为 system-reminder 注入该次用户输入、模型生成之前。
 # 相较 SessionStart 只在会话开头注入一次，本方案每轮输入都带最新规则——rules/
 # 改动即时生效，不依赖新开会话。代价是每轮重复注入（~5KB），可接受。
+#
+# 来源判定：CLAUDE_CODE_ENTRYPOINT 本地交互 TUI = cli，SDK/headless = sdk-*。
+#   该变量未入档（telemetry app.entrypoint 同源取值佐证）；为空（旧版本）时按
+#   本地放行，保持旧行为。UserPromptSubmit 无 matcher，无法在 hooks.json 层按
+#   来源过滤，只能脚本内门控。
 #
 # 规则来源：${CLAUDE_PLUGIN_ROOT}/rules/*.md，每份套同名 XML 标签
 #   <feishu-group-collab> / <dev-workflow> … 作为注入内容的明确边界，模型
@@ -19,6 +25,13 @@
 #   - 内容超 10k 字符会由 Claude Code 自动降级为文件引用（模型自行 Read）；
 #     当前规则合计 ~5KB，直接内联安全。
 set -u
+
+# 仅本地交互终端注入（CLAUDE_CODE_ENTRYPOINT=cli）；sdk-* / 其他非 cli 来源直接
+# 放行不注入。变量为空时按本地处理，兼容旧版本。
+entrypoint="${CLAUDE_CODE_ENTRYPOINT:-}"
+if [ -n "$entrypoint" ] && [ "$entrypoint" != "cli" ]; then
+  exit 0  # 非本地交互终端来源，不注入
+fi
 
 RULES_DIR="${CLAUDE_PLUGIN_ROOT:-}/rules"
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ ! -d "$RULES_DIR" ]; then

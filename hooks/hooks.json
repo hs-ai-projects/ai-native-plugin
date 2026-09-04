@@ -8,30 +8,11 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-rules.sh\"",
             "shell": "bash",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-hook.cmd\" protect-paths",
-            "shell": "bash",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/run-hook.cmd\" approval-gate",
-            "shell": "bash",
-            "timeout": 10
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feishu-task-reminder.py\"",
+            "timeout": 5
           }
         ]
       }
