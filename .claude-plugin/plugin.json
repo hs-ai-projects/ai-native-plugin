@@ -1,6 +1,6 @@
 {
   "name": "ai-native-plugin",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "AI-Native DevFlow：装进任意仓库即可跑通 SPEC→验证→归因→Review→MR→人工合并→埋点全流程",
   "author": {
     "name": "otsan"
