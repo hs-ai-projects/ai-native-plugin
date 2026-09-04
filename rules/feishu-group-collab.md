@@ -73,15 +73,16 @@
 命令模板：
 
 ```bash
-lark-cli im messages-send \
-  --chat-id <当前群id> \
+lark-cli im messages-reply \
+  --message-id <话题内任一条消息id> \
   --msg-type post \
   --content '{
     "post": {"zh_cn": {"title": "", "content": [[
       {"tag": "at", "user_id": "<对方open_id>"},
-      {"tag": "text", "text": " 要说的内容，开头留空格与 at 隔开"}
+      {"tag": "text", "text": " 想说的话"}
       ...
     ]]}}
   }' \
+  --reply-in-thread \
   --as bot
 ```
