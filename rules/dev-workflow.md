@@ -1,6 +1,6 @@
 # 开发工作流规范
 
-本仓库开发统一走 test 分支的 worktree 隔离流程，不直接改动 main 工作区。
+本仓库开发统一走 test 分支(根据branch名判断哪个是测试分支)的 worktree 隔离流程，不直接改动 main/master 分支。
 
 ## 步骤
 
