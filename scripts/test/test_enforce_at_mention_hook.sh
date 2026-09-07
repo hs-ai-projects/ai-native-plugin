@@ -40,4 +40,28 @@ echo '{"tool_input":{"command":"ls -la"}}' | bash "$HOOK" >/tmp/out.log 2>&1
 rc=$?
 [ "$rc" -eq 0 ] && echo "allow unrelated command: OK" || { echo "allow unrelated command: FAILED (rc=$rc)"; cat /tmp/out.log; exit 1; }
 
+# ---- Stop 路径：回复文本（.last_assistant_message）纯文本 @ ----
+
+# 非 cc-connect 会话（无 CC_SESSION_KEY），文本含 @ 也放行
+echo '{"last_assistant_message":"@张三 已处理"}' | env -u CC_SESSION_KEY bash "$HOOK" >/tmp/out.log 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && echo "stop allow non-cc-connect: OK" || { echo "stop allow non-cc-connect: FAILED (rc=$rc)"; cat /tmp/out.log; exit 1; }
+
+export CC_SESSION_KEY=test-session
+
+# cc-connect：回复文本 @名字 + 空格终止 → 拦
+echo '{"last_assistant_message":"@张三 已完成，请验收"}' | bash "$HOOK" >/tmp/out.log 2>&1
+rc=$?
+[ "$rc" -eq 2 ] && echo "stop block text plain-@: OK" || { echo "stop block text plain-@: FAILED (rc=$rc)"; cat /tmp/out.log; exit 1; }
+
+# cc-connect：@名字后无空格（句末/粘正文）→ 放行，不算 @ 人
+echo '{"last_assistant_message":"已转给 @广告后端委派后端部分"}' | bash "$HOOK" >/tmp/out.log 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && echo "stop allow @name+no-space: OK" || { echo "stop allow @name+no-space: FAILED (rc=$rc)"; cat /tmp/out.log; exit 1; }
+
+# cc-connect：文本无 @ → 放行
+echo '{"last_assistant_message":"任务已完成，附上 MR 链接。"}' | bash "$HOOK" >/tmp/out.log 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && echo "stop allow no-@ text: OK" || { echo "stop allow no-@ text: FAILED (rc=$rc)"; cat /tmp/out.log; exit 1; }
+
 echo "test_enforce_at_mention_hook: ALL OK"
