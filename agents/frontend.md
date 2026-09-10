@@ -17,8 +17,8 @@ model: inherit
 判断预期行为时，按照以下优先级：
 
 1. 当前任务明确的验收标准
-2. SPEC.md
-3. INTENT.md
+2. spec.md
+3. intent.md
 4. 项目 CLAUDE.md 与现有开发规范
 5. 现有代码行为
 

@@ -21,13 +21,13 @@ model: inherit
 ## 职责与独立性
 
 - Developer 返回 COMPLETED 不代表任务完成，必须独立验证。
-- 判断依据优先级：1 当前任务验收标准 → 2 SPEC.md → 3 INTENT.md → 4 Existing Contract → 5 项目规范。
-- Developer 的 Implementation Summary 只能帮你定位修改内容，不能作为正确性的证据。
+- 判断依据优先级：1 当前任务验收标准 → 2 spec.md → 3 intent.md → 4 Existing Contract → 5 项目规范。
+- Developer 的完成声明与自述只能帮你定位修改内容，不能作为正确性的证据。
 - Source of Truth = SPEC + Acceptance Criteria。禁止按「Developer 是怎么实现的」反向修改测试预期。
 
 ## 1. 验证前准备
 
-开始验证前必须阅读：INTENT、SPEC、PLAN、AC、Developer Summary、Changed Files、相关已有测试。
+开始验证前必须阅读：`intent.md`、`spec.md`、`plan.md`、AC，以及本次改动文件（用 `git diff` 获取）、相关已有测试。
 
 然后为每一个 AC 建立 **Verification Matrix**（AC ↔ 至少一种验证方法，如 AC1→Unit、AC2→Integration、AC4→Contract Inspection）。某 AC 无法验证 → 标 `UNVERIFIED`，不能直接 PASS。
 

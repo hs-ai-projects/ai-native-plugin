@@ -17,8 +17,8 @@ model: inherit
 按以下优先级判断预期行为：
 
 1. 当前任务验收标准
-2. SPEC.md
-3. INTENT.md
+2. spec.md
+3. intent.md
 4. 已有 API / Domain Contract
 5. CLAUDE.md 与项目规范
 6. 当前实现
