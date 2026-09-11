@@ -71,22 +71,13 @@
    着。不 @ 对方不会醒来（见 @ 回机制），干等这活就没人动。@ 时附一句判定
    依据——谁该做、为什么归他，照主动找人总节克制节奏，不刷屏。
 
-## 怎么 @ 人：发带 at 标签的 post 消息
+## 怎么 @ 人：回复文本里直接嵌 `<at>` 标签
 
-@ 人**必须**用下面这种带 `at` 标签的 post 消息——只有这样才能唤起对方。只发
-纯文本（哪怕文本里写了对方名字）对方收不到唤起，等同没 @。命令模板：
+@ 人**必须**在自己的回复文本里直接写 `<at user_id="对方open_id">对方名字</at>`
+写法：
 
-```bash
-lark-cli im messages-reply \
-  --message-id <话题内任一条消息id> \
-  --msg-type post \
-  --content '{
-    "post": {"zh_cn": {"title": "", "content": [[
-      {"tag": "at", "user_id": "<对方open_id>"},
-      {"tag": "text", "text": " 想说的话"}
-      ...
-    ]]}}
-  }' \
-  --reply-in-thread \
-  --as bot
 ```
+<at user_id="对方open_id">对方名字</at> 想说的话
+```
+
+属性名固定是 `user_id`（值填对方 open_id），没有 `open_id` 这种属性名写法。
