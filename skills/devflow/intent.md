@@ -88,6 +88,19 @@ lark-cli docs +update --as bot --doc <doc_token> \
 `permission_denied` → 先查 bot 是否还在知识空间里，不改 user 身份绕过；API 报错
 如实报告，不假装写入成功。
 
+### 3.3 回帖到任务
+
+Intent 文档**新建**完成后，若有飞书任务链接（task-id 来自任务 guid），把文档 URL
+回帖到任务，方便协作者从任务直接跳转：
+
+```bash
+lark-cli task +comment --task-id <task_id> --as bot --content "Intent 文档：<intent_doc_url>"
+```
+
+- 口述需求（无对应任务）→ 跳过，不是错误。
+- 只在**新建**时回帖一次；续做覆盖同一篇文档时链接不变，不重复回帖。
+- 回帖失败不阻断产出：如实说明，继续往下走，不假装已回帖。
+
 ## 4. 写之前必须调研
 
 禁止只读一两个文件就下笔。至少弄清楚：用户现有的绕行方案、需求指向的实现是否

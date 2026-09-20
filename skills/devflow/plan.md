@@ -115,7 +115,22 @@ Plan 文档 token/URL **只在本次会话内传递**，不落本地文件。写
 - 禁止在未初始化时自行挑知识空间，或把产物改写到本地文件。
 - 禁止在已有同 task-id 容器节点或已有 Plan 文档时再新建第二个。
 
-## 7. 收尾：Gate B
+## 7. 回帖到任务
+
+Plan 定稿、**停下过 Gate B 之前**，若有飞书任务链接（task-id 来自任务 guid），
+把 Spec + Plan 两篇文档 URL 一起回帖到任务：
+
+```bash
+lark-cli task +comment --task-id <task_id> --as bot \
+  --content "Spec 文档：<spec_doc_url>\nPlan 文档：<plan_doc_url>"
+```
+
+- 口述需求（无对应任务）→ 跳过，不是错误。
+- 只在 Spec/Plan **新建**（首次产出）时回帖一次；打回后按反馈修订、覆盖同一篇
+  文档时链接不变，不重复回帖。
+- 回帖失败不阻断产出：如实说明，继续走 Gate B。
+
+## 8. 收尾：Gate B
 
 Plan 定稿后**停下**，与 Spec 一起呈现给需求人确认——**FEATURE 与 `STANDARD_BUG`
 都要过 Gate B，没有特例**：给容器节点 URL + Spec/Plan 文档 URL + 任务拆分摘要。
