@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # feishu-task-reminder.py
-# UserPromptSubmit hook: 检测飞书任务链接，命中后每 10 条消息重复注入分组流转规则。
+# UserPromptSubmit hook: 检测飞书任务链接，命中后每 10 条消息重复注入规则。
 # 输出注入上下文；总是 exit 0，不阻断任何输入。
 #
 # 多会话隔离：状态按 session_id 分文件存。
@@ -20,16 +20,24 @@ STATE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "feishu-task-state"
 )
 
-RULE = """\
-<feishu-task-rule>
-【飞书任务分组流转规则（强制遵守）】
-任务分组：待办 / 进行中 / 待审核 / 待验证
-- 待办 → 进行中：领取到任务即进入进行中
-- → 待审核：方案或权限需要审核时
-- → 待验证：代码提交了合并请求或已提交到分支
-到对应阶段必须把任务移到对应分组。
-</feishu-task-rule>
+STATUS_RULE = """\
+<feishu-status-rule>
+【飞书任务状态流转规则（强制遵守，不可跳过、不可自行省略回写）】
+先加载 `devflow` skill。任务自定义字段「状态」是流转的唯一依据，到对应阶段必须
+把「状态」改到对应值——完整流转表见该 skill 下 `state-transitions.md`，以其为准，
+此处不重复列。
+</feishu-status-rule>
 """
+
+# 贴到任务评论区的会话链接前缀。按阶段区分，方便翻任务时看出这条会话在哪个阶段。
+LINKBACK_PREFIX = {"dev": "任务处理会话：", "intent": "Intent 阶段会话："}
+
+# 判定用的字段名与选项名。不写死 GUID —— 字段/选项 GUID 是按租户生成的，
+# 跨环境会变，只有名字是稳定的。取不到时按「不命中」处理，退回普通 devflow。
+FIELD_TYPE = "任务类型"
+FIELD_STATUS = "状态"
+TYPE_VALUE = "需求"
+STATUS_VALUE = "待评审"
 
 # 任务链接格式: https://applink.feishu.cn/client/todo/detail?guid=<task_id>
 _TASK_URL_RE = re.compile(
@@ -68,6 +76,85 @@ def run_lark_cli(args):
     return r.stdout, None
 
 
+def _option_name(field_guid, option_guid, cache):
+    """把 single_select 的选项 GUID 翻成选项名。失败返回 None。"""
+    if field_guid in cache:
+        options = cache[field_guid]
+    else:
+        out, _ = run_lark_cli(
+            [
+                "task",
+                "custom_fields",
+                "get",
+                "--custom-field-guid",
+                field_guid,
+                "--as",
+                "bot",
+                "--format",
+                "json",
+            ]
+        )
+        if out is None:
+            return None
+        try:
+            options = json.loads(out)["data"]["custom_field"]["single_select_setting"][
+                "options"
+            ]
+        except (ValueError, KeyError, TypeError):
+            return None
+        cache[field_guid] = options
+    for opt in options:
+        if opt.get("guid") == option_guid:
+            return opt.get("name")
+    return None
+
+
+def is_intent_task(task_id):
+    """任务是否「任务类型=需求 且 状态=待评审」。
+
+    返回 True 命中、False 不命中、None 查不到（按不命中处理，退回普通 devflow——
+    宁可漏进 intent 流程，也不要因为接口报错把无关任务误判成需求）。
+    """
+    out, _ = run_lark_cli(
+        [
+            "task",
+            "tasks",
+            "get",
+            "--task-guid",
+            task_id,
+            "--as",
+            "bot",
+            "--format",
+            "json",
+        ]
+    )
+    if out is None:
+        return None
+    try:
+        fields = json.loads(out)["data"]["task"]["custom_fields"]
+    except (ValueError, KeyError, TypeError):
+        return None
+
+    picked = {}
+    for f in fields or []:
+        if f.get("name") in (FIELD_TYPE, FIELD_STATUS):
+            picked[f["name"]] = (f.get("guid"), f.get("single_select_value"))
+    if FIELD_TYPE not in picked or FIELD_STATUS not in picked:
+        return None
+
+    cache = {}
+    names = {}
+    for name, (field_guid, option_guid) in picked.items():
+        if not field_guid or not option_guid:
+            return None
+        opt_name = _option_name(field_guid, option_guid, cache)
+        if opt_name is None:
+            return None
+        names[name] = opt_name
+
+    return names[FIELD_TYPE] == TYPE_VALUE and names[FIELD_STATUS] == STATUS_VALUE
+
+
 def _find_app_link(obj):
     """递归在 lark-cli JSON 输出中查找 message_app_link。"""
     if isinstance(obj, dict):
@@ -86,7 +173,7 @@ def _find_app_link(obj):
     return None
 
 
-def _do_linkback(task_id):
+def _do_linkback(task_id, prefix):
     """静默取当前会话链接并贴到任务评论，结果不反馈。"""
     message_id = session_message_id()
     if not message_id:
@@ -119,15 +206,15 @@ def _do_linkback(task_id):
             "--task-id",
             task_id,
             "--content",
-            "任务处理会话：" + link,
+            prefix + link,
             "--as",
             "bot",
         ]
     )
 
 
-def post_linkback(task_id):
-    """fork 子进程静默贴链接，父进程立即返回，不阻塞 RULE 注入。
+def post_linkback(task_id, prefix):
+    """fork 子进程静默贴链接，父进程立即返回，不阻塞规则注入。
 
     子进程 setsid 脱离父进程会话组：hook（父进程）被 kill 时子进程不受影响。
     fd 重定向到 devnull：避免子进程共享父进程 stdout 污染 hook 输出。
@@ -145,7 +232,7 @@ def post_linkback(task_id):
             os.dup2(devnull, 0)
             os.dup2(devnull, 1)
             os.dup2(devnull, 2)
-            _do_linkback(task_id)
+            _do_linkback(task_id, prefix)
         except Exception:
             pass
         finally:
@@ -195,17 +282,21 @@ def main():
         # 新任务链接：武装并重置计数，本次注入
         state["armed"] = True
         state["count"] = 0
-        # 固定逻辑：异步取会话链接贴到任务评论（后台静默跑，不阻塞 RULE 注入，成功失败均不反馈）；
-        # 同一任务仅派发一次，避免刷屏
         task_id = extract_task_id(prompt)
+        # 查任务自定义字段判定入口：类型=需求 且 状态=待评审 → 进 intent 阶段。
+        # 查不到（返回 None）按普通 devflow 走，不把无关任务误判成需求。
+        # 必须先于贴评论：评论前缀按阶段区分。
+        state["mode"] = "intent" if (task_id and is_intent_task(task_id)) else "dev"
+        # 异步取会话链接贴到任务评论（后台静默跑，不阻塞规则注入，成功失败均不反馈）；
+        # 同一任务仅派发一次，避免刷屏
         if task_id and task_id not in state.get("posted", []):
-            if post_linkback(task_id):
+            if post_linkback(task_id, LINKBACK_PREFIX[state["mode"]]):
                 state.setdefault("posted", []).append(task_id)
-        emit = RULE
+        emit = STATUS_RULE
     elif state.get("armed"):
         state["count"] = state.get("count", 0) + 1
         if state["count"] % INTERVAL == 0:
-            emit = RULE
+            emit = STATUS_RULE
 
     state["ts"] = now
     if state["armed"] or state["count"] > 0:
