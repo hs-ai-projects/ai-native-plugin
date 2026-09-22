@@ -159,4 +159,5 @@ lark-cli task +comment --task-id <task_id> --as bot --content "Intent 文档：<
 定稿后**停下**，给 Intent 文档 URL + Problem/Outcome/Out of Scope/待澄清问题，
 标注哪些是 `BLOCKING`，一并问出去。**禁止自行批准、自行续跑**——批准后才进入
 SPEC；打回则按反馈修订后重新提交。批准后把状态推到 `待开发`（见
-`skills/devflow/state-transitions.md`）。
+`skills/devflow/state-transitions.md`），并把审批人记进 Intent 文档（见
+`skills/devflow/gate-approval.md`）。

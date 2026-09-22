@@ -3,6 +3,9 @@
 现在做执行方案设计，不做实现，也不重新定义验收标准。把已定稿的 Spec 收敛成一份
 可拆分、可委派、可独立验收的 Plan 文档。回答「怎么拆给谁、怎么证明做对了」。
 
+设计过程用 `EnterPlanMode` 进入计划模式；方案定稿、写入 Plan 文档正文前先
+`ExitPlanMode` 请求批准，批准后才落盘产出、走第 8 节 Gate B。
+
 何时读本文件：见 `skills/devflow/SKILL.md`「阶段·产物·分工」表。容器节点必然已
 存在（FEATURE：Intent/Spec 阶段已建；`STANDARD_BUG`：Spec 阶段已建）。
 
@@ -134,6 +137,8 @@ lark-cli task +comment --task-id <task_id> --as bot \
 
 Plan 定稿后**停下**，与 Spec 一起呈现给需求人确认——**FEATURE 与 `STANDARD_BUG`
 都要过 Gate B，没有特例**：给容器节点 URL + Spec/Plan 文档 URL + 任务拆分摘要。
-**禁止自行批准、自行续跑**；打回则按反馈修订后重新提交。
+**禁止自行批准、自行续跑**；打回则按反馈修订后重新提交。批准后把审批人记进
+Plan 与 Spec 两篇文档（Gate B 覆盖两篇，都要写，见 `skills/devflow/gate-approval.md`
+第 3 节）。
 
 `FAST_BUG` 不走本文件，不过 Gate B——判定标准见 `skills/devflow/bug-triage.md`。
