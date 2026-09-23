@@ -62,7 +62,10 @@ scope / `permission_denied` 两类报错区分与处置步骤）见 `artifact-co
   场景用 `get_impact_radius` / `get_affected_flows` 取证，判不出的写 Open
   Questions 不臆测。
 - Open Questions：依据冲突项、现状与依据描述不符项、无法从依据/代码/Contract
-  推断的产品或技术决策，都写这里并标注，不自己拍板。
+  推断的技术决策，都写这里并标注，不自己拍板。产品/范围/业务规则类决策：
+  FEATURE 场景走第 4 节讨论组的 `product-designer` 裁定，裁定结果直接落正
+  文（附裁定依据），不进 Open Questions；`STANDARD_BUG` 场景没有讨论组，仍
+  按老规则写 Open Questions 交需求人。
 - 不写实现层细节（Controller/字段/接口路径/参数名）、不写 Task Graph/Owner 分
   工/验证命令——这些是 Plan 的职责；不超出 Intent 划定的范围；不发明产品规则。
 
@@ -114,39 +117,71 @@ scope / `permission_denied` 两类报错区分与处置步骤）见 `artifact-co
 - 无
 ```
 
-## 4. FEATURE 场景：产品设计 + Author/Reviewer 对抗式评审
+## 4. FEATURE 场景：产品设计 + Author/Reviewer/Designer 讨论组
 
-FEATURE 场景固定走一次产品设计分析 + 对抗式评审，防止单人写 Spec 时只顾机械
+FEATURE 场景固定走一次产品设计分析 + 讨论组评审，防止单人写 Spec 时只顾机械
 翻译 Intent、不做设计权衡，也防止自我确认偏差。
 
-**角色**：3 个（1 个前置产出 + 2 个对抗），不按 Spec 章节分工。启动方式：用
-Agent 工具依次派 named agent，写法见 `SKILL.md`「IMPLEMENT：单 Agent vs Agent
-Team」一节。角色职责固定在各自的 agent 定义文件里，本节不重复：
+**角色与派发方式**：用 `TaskCreate` 给 `spec-author`/`spec-reviewer`/
+`product-designer` 各建一条任务，再用 Agent 工具依次派成 named agent
+（`name` 直接用角色名），同一 session 内三个 named agent 自动构成隐式团队——
+组队机制同 `SKILL.md`「IMPLEMENT：单 Agent vs Agent Team」一节的 named agent
+用法，但**目的不同**：那节是并行分工，这里是持续讨论——三者轮次内直接互相
+`SendMessage`，不必每句话绕回主线程转达。角色职责固定在各自的 agent 定义文
+件里，本节不重复：
 
-- **`agents/product-designer.md`**：先跑，产出「产品设计决策点」brief（不落
-  盘，回喂主上下文），标出 Intent 未说清之处的候选方案与用户可感知差异。不
-  参与对抗轮次，不重置轮次预算，未派或产出为空都不阻塞后续流程。
-- **`agents/spec-author.md`**：吃 brief 当输入之一，起草全部 9 节初稿。
-- **`agents/spec-reviewer.md`**：对抗式评审，只输出 blocking issue 列表；无
-  blocking issue = 通过；**不接收 product-designer 的 brief**，独立沿文件内
-  写死的两张固定表重新审计 Spec 正文。
+- **`agents/product-designer.md`**：**Phase 0** 单次产出「产品设计决策点」
+  brief 回喂主上下文，标出 Intent 未说清之处的候选方案与用户可感知差异；
+  brief 里性质为「业务规则」的条目带**建议裁定**，只是参考起点，不是终局——
+  Author 不得未经讨论组确认就直接把 brief 建议当正文定论。**Phase 1** 作为
+  讨论组常驻成员随时被 `SendMessage` 唤入，对产品/范围类分歧（含业务规则、
+  范围漂移）当场裁定，裁定为终局——不再送 Open Questions/需求人。未派或
+  brief 产出为空都不阻塞后续流程，但一旦讨论组内出现产品/范围类分歧，必须
+  唤入 designer 裁定，不能因为 Phase 0 没派、或 brief 已给建议就跳过唤入。
+- **`agents/spec-author.md`**：吃 brief 当输入之一，起草全部 9 节初稿；讨论
+  组内收到 Reviewer 直接发来的 blocking issue，据此修订；遇到需要裁定的业
+  务规则/产品范围问题，直接 `SendMessage` designer，不自行采纳、不自行送
+  Open Questions。
+- **`agents/spec-reviewer.md`**：对抗式评审，起草稿完成后直接 `SendMessage`
+  把 blocking issue 发给 Author，不经主线程转达；无 blocking issue = 通过；
+  **不接收 product-designer 的 brief**，独立沿文件内写死的两张固定表重新审
+  计 Spec 正文；若 blocking issue 是对已有 designer 裁定的异议，直接
+  `SendMessage` designer 说明异议与证据。
 
-**轮次**：硬上限 2 轮，仅计 Author↔Reviewer 的对抗轮次；`product-designer`
-的前置产出不计入。Round 1 初稿+挑刺，Round 2 只复核 blocking issue 是否真解
-决，不设 Round 3。
+**讨论组怎么走**：Round 1——Author 起草初稿，直接 SendMessage 给 Reviewer
+审；Reviewer 把 blocking issue 直接 SendMessage 回 Author；涉及业务规则/产
+品范围的问题，Author 或 Reviewer 直接 SendMessage designer 请其裁定，裁定
+结果带回讨论组，Author 据此写入正文。Round 2——Author 修订后直接
+SendMessage 通知 Reviewer 复核；Reviewer 直接回复是否解决。硬上限 2 轮，仅
+计这段直接对话；designer 的裁定不计入轮次消耗，可随时被唤入。不设 Round
+3——两轮内 Author↔Reviewer 的**技术正确性**分歧仍谈不拢的，连同双方主张与
+证据一起交回主线程仲裁（见下）；产品/范围/业务规则类分歧不升级主线程，只能
+升级给 designer 重新裁定。
 
-**分歧仲裁**（裁决权在主线程，不在 Reviewer）：
-- 技术正确性争议（能被工具证据查证）：主线程裁决前必须先逐字复述原始
-  blocking issue，确认证据恰好回答这句话——防止 Author 把原始争议偷换成一个
-  更窄、能被证据回答的问题来假装已裁决。
-- 产品/范围取舍（含范围漂移）：Reviewer 无权自行判断「可接受」就放行，无条
-  件写入 Open Questions 交需求人决策。
+**主线程角色收窄，但不退场**：不再逐句转发讨论组内部消息，也不再受理产品/
+范围/业务规则类分歧（这两类改判权已下放给 designer，这正是本次改动的目
+的）；但仍是**技术正确性分歧**的唯一仲裁者、以及 Spec 正文的唯一执笔人（整
+合不外包，见下）。
+
+**分歧仲裁**（按分歧类型分流，Reviewer/Author 均无自行裁决权）：
+
+- 技术正确性争议（能被工具证据查证）→ 主线程。裁决前必须先逐字复述原始
+  blocking issue，确认证据恰好回答这句话——防止 Author 把原始争议偷换成一
+  个更窄、能被证据回答的问题来假装已裁决。
+- 产品/范围取舍（含范围漂移、业务规则）→ `product-designer`。designer 裁
+  定为终局，不再送需求人；裁定必须落在 Intent 已给的边界内，且给出依据
+  （Intent 原句 / file:line），不能只给结论。
 - **验收 Author 修订同一纪律**：不能因「看起来改多了」就签收，必须逐字核对
-  修订文字是否精确覆盖原始 issue，仍含糊则退回重改。
+  修订文字是否精确覆盖原始 issue（技术类）或裁定内容（产品/范围类），仍含
+  糊则退回重改。
 
-**整合不外包**：最终 Spec 正文必须由主线程/调用方自己写，不能由三者中任何
-一个代写或裁决正文——出问题要能追溯到主线程当时依据哪条证据做的判断，不能
-指向一个黑箱。
+**整合不外包**：最终 Spec 正文必须由主线程/调用方自己写，不能由讨论组三者
+中任何一个代写正文——出问题要能追溯到当时依据哪条证据做的判断，不能指向一
+个黑箱。这条约束管的是「谁执笔」，不是「谁决策」：产品/范围/业务规则类内容
+的决策权已明确交给 designer，主线程执笔时照录 designer 的裁定与理由，不重
+新评议裁定本身的对错；讨论组内部的往来消息本身不是证据，执笔时仍要能指到
+Spec 正文/Intent 原文/代码证据/designer 裁定记录，不能以「聊出了共识」作为
+落笔依据。
 
 ## 5. 收尾
 
