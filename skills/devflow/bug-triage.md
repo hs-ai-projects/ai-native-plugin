@@ -21,5 +21,6 @@ DISCOVER 阶段判定 Root Cause 后，紧接着判定复杂度。**不凭感觉
 
 - `FAST_BUG` → 不建任何文档，DISCOVER 判完直接进 `IMPLEMENT`。
 - `STANDARD_BUG` → 建 Spec + Plan（复用 `skills/devflow/spec.md` /
-  `skills/devflow/plan.md` 的产出逻辑），**过 Gate B** 后才进
+  `skills/devflow/plan.md` 的产出逻辑，Plan 阶段验证方式按
+  `skills/devflow/test-team.md` 的产出逻辑执行），**过 Gate B** 后才进
   `IMPLEMENT`——跟需求类任务共用同一个 Gate，没有特例。
