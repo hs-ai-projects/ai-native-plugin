@@ -1,6 +1,6 @@
 {
   "hooks": {
-    "UserPromptSubmit": [
+    "SessionStart": [
       {
         "hooks": [
           {
@@ -8,11 +8,6 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-rules.sh\"",
             "shell": "bash",
             "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feishu-task-reminder.py\"",
-            "timeout": 15
           }
         ]
       }
