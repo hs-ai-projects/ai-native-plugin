@@ -5,39 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/inject-rules.sh\"",
-            "shell": "bash",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feishu-task-reminder.py\"",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/feishu-task-reminder.py\"",
             "timeout": 15
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/enforce-at-mention.sh\"",
-            "shell": "bash",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/enforce-at-mention.sh\"",
-            "shell": "bash",
-            "timeout": 10
           }
         ]
       }
